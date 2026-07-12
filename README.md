@@ -13,14 +13,15 @@ Searching, reviewing earlier decisions, copying large sections, or producing a c
 
 Rend imports a public ChatGPT Share page and renders the entire conversation as a continuous document.
 
-Once imported, you can search with normal browser tools, annotate, curate for export, save as Markdown, or print a clean transcript.
+Once imported, you can search with normal browser tools, annotate the transcript, curate it for export, save as Markdown, or print a clean transcript.
+
 
 
 ## Features
 
 - Import a single public ChatGPT Share URL
 - Render the entire conversation as one continuous document
-- Search using normal browser Find (`Ctrl+F`)
+- Search using your browser's built-in Find (`Ctrl+F`)
 - Copy individual messages as Markdown
 - Include or omit messages and section markers from exported output
 - Add section markers to structure the transcript
@@ -43,7 +44,7 @@ Start the local server:
 py -3 server.py
 ```
 
-Then open:
+Then open your browser to:
 
 ```text
 http://127.0.0.1:8000/
@@ -75,7 +76,7 @@ Section markers and notes are editorial annotations. They do not modify the impo
 
 ## Saving
 
-When supported by the browser, Rend uses the File System Access API to present the native **Save As...** dialog and remembers the last successfully used save location.
+When supported by the browser, Rend uses the File System Access API to present the native **Save As...** dialog and offers the last successfully used save location by default.
 
 If native file access is unavailable or denied, Rend automatically falls back to downloading a Markdown file.
 
@@ -95,9 +96,10 @@ Imported conversations remain in memory for the duration of the session but are 
 
 ## Share links
 
-A ChatGPT Share URL remains publicly accessible until you revoke it.
+A ChatGPT Share URL remains publicly accessible on OpenAI's servers until you delete the link. Anyone with the link can view the conversation *(and, depending on ChatGPT's current Share-link behavior, may also be able to import it into their own chat history).*
 
-After saving or printing your transcript, revoke the Share link if it no longer needs to remain public.
+After saving or printing your transcript, delete the Share link if it no longer needs to remain public. Deleting a Share link prevents future access through that link, but does not remove copies that others have already imported or saved.
+
 
 ## Limitations
 
@@ -107,8 +109,9 @@ If Rend cannot confidently reconstruct a complete conversation, it reports the p
 
 Rend imports only public ChatGPT Share pages. It cannot import private conversations directly from your ChatGPT account.
 
-Attachment metadata is preserved when available, but attachment contents are never downloaded.
+Share links represent a snapshot at the time they were created (and may contain only part of a conversation, depending on how they were shared). Rend renders exactly what is contained in the supplied Share page, rather than implying or inferring content that is not present.
 
+Attachment metadata is preserved when available, but attachment contents are never downloaded.
 
 ## Development
 
@@ -119,4 +122,4 @@ py -3 -m unittest discover -s tests -v
 node --test tests/document.test.mjs tests/save-markdown.test.mjs
 ```
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for implementation details and design rationale.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for implementation details and design rationale, and [COMPLIANCE.md](COMPLIANCE.md) for the project's intended scope and interaction with ChatGPT Share pages.

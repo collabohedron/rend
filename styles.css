@@ -1,4 +1,6 @@
 :root { font-family: system-ui, sans-serif; color-scheme: light dark; line-height: 1.55; }
+[hidden] { display: none !important; }
+html { overflow-y: scroll; }
 body { margin: 0; }
 main { max-width: 56rem; margin: 2rem auto; padding: 0 1rem; }
 .controls { display: flex; gap: .5rem; margin-top: .4rem; }
@@ -9,10 +11,16 @@ button { padding: .45rem .7rem; }
 .summary dl { display: grid; grid-template-columns: max-content 1fr; gap: .15rem 1rem; margin: 0; }
 .summary dt { font-weight: 600; }
 .summary dd { margin: 0; overflow-wrap: anywhere; }
-.document-actions { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin: 1.5rem 0; }
+.document-actions { margin: 1.5rem 0; }
+.sticky-review { position: sticky; top: 0; z-index: 10; padding: .45rem .6rem; border: 1px solid #8885; background: Canvas; }
+.review-controls { display: flex; justify-content: space-between; align-items: center; gap: .75rem; }
 .action-buttons, .editing-controls { display: flex; flex-wrap: wrap; gap: .4rem; }
 .include-all-control { white-space: nowrap; }
-.safety-recommendation { padding: .75rem; border: 1px solid #8888; }
+.transient-status { margin: .7rem 0; color: #666; }
+.safety-recommendation { display: flex; align-items: flex-start; gap: .75rem; margin: .45rem 0 0; padding: .55rem .65rem; border-left: 3px solid #F00; background: #8881; }
+.safety-recommendation span { flex: 1; }
+.dismiss-notice { padding: .05rem .3rem; border: 1px solid transparent; background: transparent; color: inherit; }
+.dismiss-notice:hover, .dismiss-notice:focus-visible { border-color: #8888; }
 #conversation > h1 { margin: 2.5rem 0 1.5rem; }
 
 article.message { position: relative; border-top: 1px solid #8886; padding: 3.15rem 0 3.1rem; }
@@ -58,7 +66,8 @@ article.message:hover .message-edge-controls, .message-edge-controls:focus-withi
 
 @media (max-width: 42rem) {
   .summary-panel { grid-template-columns: 1fr; gap: .75rem; }
-  .document-actions, article.message > header { align-items: flex-start; flex-direction: column; }
+  article.message > header { align-items: flex-start; flex-direction: column; }
+  .review-controls { flex-wrap: wrap; }
   .message-edge-controls { opacity: .5; }
   .omitted .message-edge-controls { opacity: .28; }
   .section-edge-controls { opacity: .5; }

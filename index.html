@@ -15,7 +15,7 @@
           <button type="submit">Import</button>
         </div>
       </form>
-      <p id="status" class="application-chrome" role="status"></p>
+      <p id="status" class="application-chrome transient-status" role="status" hidden></p>
 
       <section id="summary-panel" class="summary-panel application-chrome" hidden>
         <section id="import-summary" class="summary">
@@ -28,20 +28,23 @@
         </section>
       </section>
 
-      <section id="document-actions" class="document-actions application-chrome" hidden>
-        <label class="include-all-control">
-          <input id="include-all" type="checkbox" disabled>
-          Include all messages
-        </label>
-        <div class="action-buttons">
-          <button id="save-markdown" type="button">Save Markdown As...</button>
-          <button id="print-selected" type="button">Print Selected</button>
+      <section id="document-actions" class="document-actions sticky-review application-chrome" hidden>
+        <div class="review-controls">
+          <label class="include-all-control">
+            <input id="include-all" type="checkbox" disabled>
+            Include All Messages
+          </label>
+          <div class="action-buttons">
+            <button id="save-markdown" type="button">Save Markdown As...</button>
+            <button id="print-selected" type="button">Print Selected</button>
+          </div>
         </div>
+        <aside id="safety-recommendation" class="safety-recommendation" role="note" hidden>
+          <span>Safety reminder: if this transcript no longer needs to remain public, revoke its ChatGPT Share link.</span>
+          <button id="dismiss-safety-recommendation" class="dismiss-notice" type="button"
+                  aria-label="Dismiss Share-link safety reminder" title="Dismiss">✕</button>
+        </aside>
       </section>
-
-      <p id="safety-recommendation" class="safety-recommendation application-chrome" hidden>
-        Safety reminder: if this transcript no longer needs to remain public, revoke its ChatGPT Share link.
-      </p>
       <section id="conversation" aria-live="polite"></section>
     </main>
     <script type="module" src="app.js"></script>

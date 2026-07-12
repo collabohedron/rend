@@ -32,16 +32,18 @@ const includeAll = document.querySelector("#include-all");
 const saveButton = document.querySelector("#save-markdown");
 const printButton = document.querySelector("#print-selected");
 const safetyRecommendation = document.querySelector("#safety-recommendation");
+const dismissSafetyRecommendation = document.querySelector("#dismiss-safety-recommendation");
 const handleStore = new FileHandleStore();
 let curated = null;
 let editingSectionId = null;
 let editingNoteMessageId = null;
 let editingOriginal = null;
+let statusTimer = null;
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   resetViewer();
-  status.textContent = "Importing...";
+  showStatus("Importing...");
   try {
     const response = await fetch("/api/import", {
       method: "POST",
@@ -56,9 +58,10 @@ form.addEventListener("submit", async (event) => {
     updateGlobalInclusionControl();
     summaryPanel.hidden = false;
     documentActions.hidden = false;
-    status.textContent = "Import complete.";
+    showStatus("Import complete.", true);
   } catch (error) {
-    status.textContent = error instanceof Error ? error.message : "Import failed";
+    form.hidden = false;
+    showStatus(error instanceof Error ? error.message : "Import failed");
   }
 });
 
@@ -79,11 +82,11 @@ saveButton.addEventListener("click", async () => {
     handleStore,
   });
   if (result.method === "cancelled") {
-    status.textContent = "Save cancelled.";
+    showStatus("Save cancelled.", true);
     return;
   }
-  status.textContent = result.method === "file-system" ? "Markdown saved." : "Markdown download started.";
-  safetyRecommendation.hidden = false;
+  showStatus(result.method === "file-system" ? "Markdown saved." : "Markdown download started.", true);
+  showSafetyRecommendation();
 });
 
 printButton.addEventListener("click", () => {
@@ -91,6 +94,11 @@ printButton.addEventListener("click", () => {
   finishActiveEditing();
   renderCuratedDocument();
   window.print();
+  showSafetyRecommendation();
+});
+
+dismissSafetyRecommendation.addEventListener("click", () => {
+  safetyRecommendation.hidden = true;
 });
 
 document.addEventListener("pointerdown", (event) => {
@@ -103,10 +111,30 @@ function resetViewer() {
   editingSectionId = null;
   editingNoteMessageId = null;
   editingOriginal = null;
+  form.hidden = false;
   conversation.replaceChildren();
   summaryPanel.hidden = true;
   documentActions.hidden = true;
   safetyRecommendation.hidden = true;
+  hideStatus();
+}
+
+function showStatus(message, transient = false) {
+  if (statusTimer) window.clearTimeout(statusTimer);
+  status.textContent = message;
+  status.hidden = false;
+  if (transient) statusTimer = window.setTimeout(hideStatus, 2600);
+}
+
+function hideStatus() {
+  if (statusTimer) window.clearTimeout(statusTimer);
+  statusTimer = null;
+  status.hidden = true;
+  status.textContent = "";
+}
+
+function showSafetyRecommendation() {
+  safetyRecommendation.hidden = false;
 }
 
 function renderSummary(documentModel) {
@@ -178,7 +206,7 @@ function createMessageElement(node) {
       copyButton.title = "Copied";
       window.setTimeout(() => restoreCopyButton(copyButton), 1200);
     } catch {
-      status.textContent = "Unable to copy this message.";
+      showStatus("Unable to copy this message.", true);
     }
   });
   const sectionButton = iconButton("§", "Add section marker before this message", () => {
@@ -419,7 +447,7 @@ function finishActiveEditing() {
 }
 
 function focusActiveEditor() {
-  const selector = editingSectionId ? `[data-section-id="${CSS.escape(editingSectionId)}"] input` :
+  const selector = editingSectionId ? `[data-section-id="${CSS.escape(editingSectionId)}"] .section-editor` :
     editingNoteMessageId ? `[data-note-for="${CSS.escape(editingNoteMessageId)}"] textarea` : null;
   if (selector) conversation.querySelector(selector)?.focus();
 }

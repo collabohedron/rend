@@ -1,79 +1,122 @@
-# rend
+# Rend
 
-**A ChatGPT Conversation Renderer**
+**A ChatGPT conversation renderer**
 
 *Read long ChatGPT conversations like documents again.*
 
-This milestone imports exactly one public `https://chatgpt.com/share/<id>` page into a
-renderer-neutral conversation document and displays it as one continuous browser DOM.
 
-## Run
+## Why Rend?
 
-Python 3.11 or newer is required. No third-party packages are used.
-There is no install step: do not run `pip install` or `npm install`, and do not vendor
-libraries into the repository.
+ChatGPT conversations become increasingly difficult to work with as they grow.
+
+Searching, reviewing earlier decisions, copying large sections, or producing a clean transcript can become cumbersome in the standard interface.
+
+Rend imports a public ChatGPT Share page and renders the entire conversation as a continuous document.
+
+Once imported, you can search with normal browser tools, annotate, curate for export, save as Markdown, or print a clean transcript.
+
+
+## Features
+
+- Import a single public ChatGPT Share URL
+- Render the entire conversation as one continuous document
+- Search using normal browser Find (`Ctrl+F`)
+- Copy individual messages as Markdown
+- Include or omit messages and section markers from exported output
+- Add section markers to structure the transcript
+- Add editorial notes for later review
+- Save curated transcripts as Markdown
+- Print curated transcripts without interface controls
+
+## Requirements
+
+- Python 3.11 or newer
+- A modern desktop browser
+
+No third-party Python packages are required.
+
+## Running Rend
+
+Start the local server:
 
 ```powershell
 py -3 server.py
 ```
 
-Open `http://127.0.0.1:8000/`, paste a ChatGPT Share URL, and choose **Import**.
+Then open:
 
-The viewer reports exact model-derived import and validation totals. Messages can be
-included or omitted and copied individually. Section markers are movable structural
-nodes in the transcript; a note is commentary owned by one message and displayed beneath
-it. Both use temporary edit modes so the transcript remains document-like when editing
-is finished. **Save Markdown As...** and **Print Selected** use that same curated stream
-while preserving original message order and explicit authorship. Original message
-Markdown is not normalized. Attachment bytes are never fetched; available attachment
-metadata is retained in an `Attachments` section.
+```text
+http://127.0.0.1:8000/
+```
 
-Message inclusion and annotations are session-only. When supported, the browser's File
-System Access API opens a native Save As dialog. A successfully used file handle is kept
-in IndexedDB so the browser can offer that location on a later save; raw filesystem paths
-are never stored. Unsupported or denied file access falls back to a normal `.md` download.
+Paste a public ChatGPT Share URL in the form:
 
-Run the independent parser tests with:
+```text
+https://chatgpt.com/share/<id>
+```
+
+Select **Import**.
+
+## Using Rend
+
+After importing a conversation you can:
+
+- Review the transcript as one continuous document.
+- Include or omit individual messages and section markers.
+- Add section markers to structure the transcript.
+- Add editorial notes for later review.
+- Copy individual messages as Markdown.
+- Save the curated transcript with **Save Markdown As...**.
+- Print only the selected content with **Print Selected**.
+
+Section markers and notes are editorial annotations. They do not modify the imported conversation; they become part of the curated transcript used for Markdown export and printing.
+
+*Annotations and inclusion choices exist only for the current session.  Refreshing the page starts with a clean transcript.*
+
+## Saving
+
+When supported by the browser, Rend uses the File System Access API to present the native **Save As...** dialog and remembers the last successfully used save location.
+
+If native file access is unavailable or denied, Rend automatically falls back to downloading a Markdown file.
+
+## Privacy
+
+Rend imports only the ChatGPT Share URL that you provide.
+
+It does **not**:
+
+- authenticate with ChatGPT
+- access your account
+- follow links
+- crawl additional pages
+- retrieve attachment contents
+
+Imported conversations remain in memory for the duration of the session but are not stored by Rend.
+
+## Share links
+
+A ChatGPT Share URL remains publicly accessible until you revoke it.
+
+After saving or printing your transcript, revoke the Share link if it no longer needs to remain public.
+
+## Limitations
+
+Rend relies on ChatGPT Share pages, which are not a public API and may change over time.
+
+If Rend cannot confidently reconstruct a complete conversation, it reports the page as unsupported rather than knowingly rendering a partial transcript.
+
+Rend imports only public ChatGPT Share pages. It cannot import private conversations directly from your ChatGPT account.
+
+Attachment metadata is preserved when available, but attachment contents are never downloaded.
+
+
+## Development
+
+Run the test suite with:
 
 ```powershell
 py -3 -m unittest discover -s tests -v
 node --test tests/document.test.mjs tests/save-markdown.test.mjs
 ```
 
-## Repository contents
-
-The repository contains application source, standard-library tests, and documentation
-only. Python virtual environments, `node_modules`, interpreter caches, editor metadata,
-logs, and local agent state are ignored. Imported conversations are held in memory and
-are not written into the repository.
-
-## Architecture
-
-The pipeline has four deliberately separate layers:
-
-1. `retrieval.py` accepts only an HTTPS ChatGPT Share URL. Automatic redirects are
-   disabled; every destination is validated before a new GET is made. No cookies,
-   authentication, crawling, or secondary-resource retrieval is performed.
-2. `parser.py` reads serialized React Router route data embedded in the initial HTML,
-   expands its reference-indexed object graph, validates the expected structures, and
-   constructs the model. It does not inspect rendered message DOM.
-3. `model.py` defines the stable renderer-neutral document boundary. ChatGPT-specific
-   serialization details stop at the parser.
-4. `app.js` knows only the document model. It performs minimal continuous rendering and
-   displays attachment metadata as placeholders.
-
-JavaScript execution is unnecessary during import because the initial HTTP response
-already contains the complete ordered conversation payload. ChatGPT's rendered DOM is
-intentionally ignored: it is produced by application JavaScript, may be virtualized,
-and is less complete and less stable than the stored Markdown source.
-
-The Share serialization is private and may change. The parser therefore fails closed:
-missing, ambiguous, inconsistent, or incomplete required structures produce an
-`unsupported share-page format` diagnostic. It never returns a knowingly partial
-document. Internal system, reasoning, context, moderation, hidden, and tool records are
-excluded from rendered messages. Visible messages retain original Markdown, timestamps,
-model and citation metadata, attachment metadata, and any visible invocation metadata.
-
-The parser is the stable boundary between ChatGPT's changing private serialization and
-the rest of the application. Future format changes should require changes inside the
-importer, not in rendering, navigation, or export code.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for implementation details and design rationale.

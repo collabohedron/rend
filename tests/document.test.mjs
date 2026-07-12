@@ -177,6 +177,7 @@ test("annotation editing uses click, outside commit, Escape cancel, and no Done 
   assert.match(app, /iconButton\("↑"/);
   assert.match(app, /iconButton\("↓"/);
   assert.match(app, /iconButton\("✕"/);
+  assert.match(app, /\[data-section-id=.*\.section-editor/);
 });
 
 test("message controls are page furniture and omitted hover keeps controls usable", async () => {
@@ -210,4 +211,46 @@ test("print CSS excludes omitted messages and interface controls", async () => {
   const css = await readFile(new URL("../styles.css", import.meta.url), "utf8");
   assert.match(css, /@media print/);
   assert.match(css, /\.application-chrome[\s\S]*\.omitted[\s\S]*display: none !important/);
+});
+
+test("pre-import chrome is hidden and review controls become sticky after import", async () => {
+  const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
+  const app = await readFile(new URL("../app.js", import.meta.url), "utf8");
+  const css = await readFile(new URL("../styles.css", import.meta.url), "utf8");
+  assert.match(html, /id="status"[^>]*hidden/);
+  assert.match(html, /id="summary-panel"[^>]*hidden/);
+  assert.match(html, /id="document-actions"[^>]*sticky-review[^>]*hidden/);
+  assert.match(html, /id="safety-recommendation"[^>]*hidden/);
+  assert.doesNotMatch(app, /form\.hidden = true/);
+  assert.match(app, /form\.hidden = false/);
+  assert.match(css, /\[hidden\] \{ display: none !important; \}/);
+  assert.match(css, /\.sticky-review \{ position: sticky; top: 0/);
+});
+
+test("save and print reveal the persistent Share-link reminder", async () => {
+  const app = await readFile(new URL("../app.js", import.meta.url), "utf8");
+  const occurrences = app.match(/showSafetyRecommendation\(\)/g) || [];
+  assert.equal(occurrences.length, 3);
+  assert.match(app, /"Markdown saved\."/);
+  assert.match(app, /window\.print\(\);\s*showSafetyRecommendation\(\)/);
+  assert.doesNotMatch(app, /scrollIntoView/);
+});
+
+test("Share-link reminder lives inside the sticky review block", async () => {
+  const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
+  const reviewStart = html.indexOf('id="document-actions"');
+  const reminder = html.indexOf('id="safety-recommendation"');
+  const reviewEnd = html.indexOf('id="conversation"');
+  assert.ok(reviewStart >= 0 && reminder > reviewStart && reminder < reviewEnd);
+  assert.match(html, /class="review-controls"/);
+});
+
+test("Share-link reminder can be dismissed and shown again by later actions", async () => {
+  const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
+  const app = await readFile(new URL("../app.js", import.meta.url), "utf8");
+  assert.match(html, /id="dismiss-safety-recommendation"/);
+  assert.match(html, /aria-label="Dismiss Share-link safety reminder"/);
+  assert.match(app, /dismissSafetyRecommendation\.addEventListener\("click"/);
+  assert.match(app, /safetyRecommendation\.hidden = true/);
+  assert.equal((app.match(/showSafetyRecommendation\(\)/g) || []).length, 3);
 });

@@ -12,6 +12,7 @@ import {
   safeFilename,
   setAllMessagesIncluded,
   setMessageIncluded,
+  setSectionIncluded,
   summarize,
   toMarkdown,
   updateNote,
@@ -221,7 +222,24 @@ function createMessageElement(node) {
 function createSectionElement(section) {
   const element = document.createElement("section");
   element.className = "section-marker";
+  element.classList.toggle("omitted", !section.included);
   element.dataset.sectionId = section.id;
+  const topControls = document.createElement("div");
+  topControls.className = "section-edge-controls no-print";
+  const checkbox = document.createElement("input");
+  checkbox.type = "checkbox";
+  checkbox.checked = section.included;
+  checkbox.title = "Include this Section Marker in printouts and Markdown exports.";
+  checkbox.setAttribute("aria-label", checkbox.title);
+  checkbox.addEventListener("pointerdown", (event) => event.stopPropagation());
+  checkbox.addEventListener("click", (event) => event.stopPropagation());
+  checkbox.addEventListener("change", () => {
+    setSectionIncluded(curated, section.id, checkbox.checked);
+    element.classList.toggle("omitted", !checkbox.checked);
+    const badge = element.querySelector(".section-omitted-label");
+    if (badge) badge.hidden = checkbox.checked;
+  });
+  topControls.append(checkbox);
   if (editingSectionId === section.id) {
     element.classList.add("editing");
     const editor = document.createElement("input");
@@ -250,10 +268,16 @@ function createSectionElement(section) {
         element.remove();
       },
     });
-    element.append(editor, controls);
+    element.append(topControls, editor, controls);
   } else {
+    const headingGroup = document.createElement("div");
+    headingGroup.className = "section-heading";
     const heading = document.createElement("h2");
     heading.textContent = `§ ${section.text || "Untitled section"}`;
+    const omitted = document.createElement("span");
+    omitted.className = "omitted-label section-omitted-label";
+    omitted.textContent = "OMITTED";
+    omitted.hidden = section.included;
     element.tabIndex = 0;
     element.addEventListener("click", () => beginSectionEditing(section, element));
     element.addEventListener("keydown", (event) => {
@@ -262,7 +286,8 @@ function createSectionElement(section) {
         beginSectionEditing(section, element);
       }
     });
-    element.append(heading);
+    headingGroup.append(heading, omitted);
+    element.append(topControls, headingGroup);
   }
   return element;
 }

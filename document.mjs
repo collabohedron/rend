@@ -28,9 +28,13 @@ export function inclusionState(curated) {
 export function addSection(curated, beforeMessageId, text = "") {
   requireMessage(curated, beforeMessageId);
   const targetIndex = curated.nodes.findIndex((node) => node.kind === "message" && node.messageId === beforeMessageId);
-  const section = { kind: "section", id: nextId(curated), text: String(text) };
+  const section = { kind: "section", id: nextId(curated), text: String(text), included: true };
   curated.nodes.splice(targetIndex, 0, section);
   return section;
+}
+
+export function setSectionIncluded(curated, sectionId, included) {
+  findSection(curated, sectionId).included = Boolean(included);
 }
 
 export function updateSection(curated, sectionId, text) {
@@ -79,7 +83,7 @@ export function curatedStream(curated, { includeOmitted = false } = {}) {
   const stream = [];
   for (const node of curated.nodes) {
     if (node.kind === "section") {
-      stream.push({ kind: "section", section: node });
+      if (includeOmitted || node.included) stream.push({ kind: "section", section: node, included: node.included });
       continue;
     }
     const included = curated.included.get(node.messageId);

@@ -37,9 +37,17 @@ article.message:hover .message-edge-controls, .message-edge-controls:focus-withi
 .omitted:hover .message-included, .omitted .message-included:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 .omitted-label { border: 1px solid currentColor; padding: .08rem .35rem; font-size: .7rem; font-weight: 700; letter-spacing: .04em; }
 
-.section-marker { position: relative; display: flex; align-items: center; gap: .7rem; margin: 0; padding: 1.15rem 0; border-top: 1px solid #8886; cursor: text; }
+.section-marker { position: relative; display: block; margin: 0; padding: 2.75rem 0 1.15rem; border-top: 1px solid #8886; cursor: text; }
+.section-heading { display: flex; align-items: center; gap: .7rem; }
 .section-marker h2 { margin: 0; font-size: 1.12rem; font-weight: 650; }
 .section-marker.editing { display: block; }
+.section-edge-controls { position: absolute; top: .65rem; left: 0; min-height: 1.7rem; opacity: .16; transition: opacity .12s; }
+.section-edge-controls input { width: 1rem; height: 1rem; margin: 0 .35rem; }
+.section-marker:hover .section-edge-controls, .section-edge-controls:focus-within { opacity: 1; }
+.section-marker.omitted .section-heading, .section-marker.omitted .section-editor { opacity: .56; }
+.section-marker.omitted .section-edge-controls { opacity: .07; }
+.section-marker.omitted:hover .section-edge-controls, .section-marker.omitted .section-edge-controls:focus-within { opacity: .92; }
+.section-marker.omitted:hover .section-edge-controls input, .section-marker.omitted .section-edge-controls input:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 .section-editor, .note-editor { box-sizing: border-box; display: block; width: 100%; margin-bottom: .55rem; padding: .5rem; font: inherit; }
 .editing-controls { justify-content: flex-end; }
 .editing-controls button { font-size: .78rem; padding: .3rem .55rem; }
@@ -53,6 +61,8 @@ article.message:hover .message-edge-controls, .message-edge-controls:focus-withi
   .document-actions, article.message > header { align-items: flex-start; flex-direction: column; }
   .message-edge-controls { opacity: .5; }
   .omitted .message-edge-controls { opacity: .28; }
+  .section-edge-controls { opacity: .5; }
+  .section-marker.omitted .section-edge-controls { opacity: .28; }
   .message-note { margin-left: 0; }
 }
 
@@ -60,7 +70,7 @@ article.message:hover .message-edge-controls, .message-edge-controls:focus-withi
   :root { color-scheme: light; }
   body { color: #000; background: #fff; }
   main { max-width: none; margin: 0; padding: 0; }
-  .application-chrome, .no-print, .message-edge-controls, .omitted, .editing-controls,
+  .application-chrome, .no-print, .message-edge-controls, .section-edge-controls, .omitted, .editing-controls,
   .section-marker.editing, .message-note.editing { display: none !important; }
   #conversation > h1 { margin-top: 0; }
   article.message { opacity: 1; break-inside: auto; padding: 1rem 0 1.25rem; }

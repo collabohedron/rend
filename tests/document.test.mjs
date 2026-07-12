@@ -17,6 +17,7 @@ import {
   safeFilename,
   setAllMessagesIncluded,
   setMessageIncluded,
+  setSectionIncluded,
   summarize,
   toMarkdown,
   updateNote,
@@ -80,6 +81,7 @@ test("copy returns only the selected original message body", () => {
 test("section markers are first-class nodes inserted before a selected message", () => {
   const curated = createCuratedDocument(source);
   const section = addSection(curated, "assistant-1", "Lock Rule Redesign");
+  assert.equal(section.included, true);
   const nodes = curatedStream(curated, { includeOmitted: true });
   assert.deepEqual(nodes.slice(1, 3).map((node) => node.kind === "message" ? node.message.id : node.section.id), [section.id, "assistant-1"]);
   const markdown = toMarkdown(curated);
@@ -89,6 +91,18 @@ test("section markers are first-class nodes inserted before a selected message",
   assert.ok(toMarkdown(curated).includes("## Edited section"));
   removeSection(curated, section.id);
   assert.ok(!toMarkdown(curated).includes("Lock Rule Redesign"));
+});
+
+test("section markers can be omitted independently from Markdown and print stream", () => {
+  const curated = createCuratedDocument(source);
+  const section = addSection(curated, "assistant-1", "Optional Section");
+  setSectionIncluded(curated, section.id, false);
+  assert.ok(!toMarkdown(curated).includes("Optional Section"));
+  assert.ok(!curatedStream(curated).some((node) => node.kind === "section"));
+  const reviewNode = curatedStream(curated, { includeOmitted: true }).find((node) => node.kind === "section");
+  assert.equal(reviewNode.section.id, section.id);
+  assert.equal(reviewNode.included, false);
+  assert.deepEqual(curated.source.messages.map((message) => message.id), ["user-1", "assistant-1", "user-2"]);
 });
 
 test("section markers move without changing imported message order", () => {
@@ -182,6 +196,14 @@ test("message controls occupy four semantic edge regions", async () => {
   assert.match(app, /message-bottom-controls/);
   assert.match(app, /bottomControls\.append\(copyButton, noteButton\)/);
   assert.match(app, /copy-symbol/);
+});
+
+test("section marker has an isolated upper-left inclusion control", async () => {
+  const app = await readFile(new URL("../app.js", import.meta.url), "utf8");
+  assert.match(app, /section-edge-controls/);
+  assert.match(app, /Include this Section Marker in printouts and Markdown exports\./);
+  assert.match(app, /setSectionIncluded\(curated, section\.id, checkbox\.checked\)/);
+  assert.match(app, /event\.stopPropagation\(\)/);
 });
 
 test("print CSS excludes omitted messages and interface controls", async () => {

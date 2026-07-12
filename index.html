@@ -3,31 +3,45 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Conversation Viewer</title>
+    <title>rend - A ChatGPT Conversation Renderer</title>
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
     <main>
-      <form id="import-form">
+      <form id="import-form" class="application-chrome">
         <label for="share-url">ChatGPT Share URL</label>
         <div class="controls">
-          <input id="share-url" name="url" type="url" required
-                 placeholder="https://chatgpt.com/share/...">
+          <input id="share-url" name="url" type="url" required placeholder="https://chatgpt.com/share/...">
           <button type="submit">Import</button>
         </div>
       </form>
-      <p id="status" role="status"></p>
-      <section id="import-summary" class="summary" hidden>
-        <h2>Imported conversation</h2>
-        <dl></dl>
+      <p id="status" class="application-chrome" role="status"></p>
+
+      <section id="summary-panel" class="summary-panel application-chrome" hidden>
+        <section id="import-summary" class="summary">
+          <h2>Imported conversation</h2>
+          <dl></dl>
+        </section>
+        <section id="validation" class="summary">
+          <h2>Validation</h2>
+          <dl></dl>
+        </section>
       </section>
-      <section id="validation" class="summary" hidden>
-        <h2>Validation</h2>
-        <dl></dl>
+
+      <section id="document-actions" class="document-actions application-chrome" hidden>
+        <label class="include-all-control">
+          <input id="include-all" type="checkbox" disabled>
+          Include all messages
+        </label>
+        <div class="action-buttons">
+          <button id="save-markdown" type="button">Save Markdown As...</button>
+          <button id="print-selected" type="button">Print Selected</button>
+        </div>
       </section>
-      <div class="actions">
-        <button id="export-markdown" type="button" disabled>Export Markdown</button>
-      </div>
+
+      <p id="safety-recommendation" class="safety-recommendation application-chrome" hidden>
+        Safety reminder: if this transcript no longer needs to remain public, revoke its ChatGPT Share link.
+      </p>
       <section id="conversation" aria-live="polite"></section>
     </main>
     <script type="module" src="app.js"></script>

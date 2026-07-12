@@ -59,7 +59,7 @@ def retrieve_share_page(url: str, *, timeout: float = 30, max_redirects: int = 5
     for _ in range(max_redirects + 1):
         request = urllib.request.Request(
             current,
-            headers={"User-Agent": "ConversationViewer/0.1", "Accept": "text/html"},
+            headers={"User-Agent": "rend/0.1", "Accept": "text/html"},
             method="GET",
         )
         try:

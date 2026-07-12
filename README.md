@@ -1,4 +1,8 @@
-# ChatGPT Conversation Viewer — import milestone
+# rend
+
+**A ChatGPT Conversation Renderer**
+
+*Read long ChatGPT conversations like documents again.*
 
 This milestone imports exactly one public `https://chatgpt.com/share/<id>` page into a
 renderer-neutral conversation document and displays it as one continuous browser DOM.
@@ -15,16 +19,25 @@ py -3 server.py
 
 Open `http://127.0.0.1:8000/`, paste a ChatGPT Share URL, and choose **Import**.
 
-The viewer reports exact model-derived import and validation totals. **Export Markdown**
-creates a role-labeled document from the same ordered model used by the renderer. Original
-message Markdown is not normalized. Attachment bytes are never fetched; available
-attachment metadata is retained in an `Attachments` section.
+The viewer reports exact model-derived import and validation totals. Messages can be
+included or omitted and copied individually. Section markers are movable structural
+nodes in the transcript; a note is commentary owned by one message and displayed beneath
+it. Both use temporary edit modes so the transcript remains document-like when editing
+is finished. **Save Markdown As...** and **Print Selected** use that same curated stream
+while preserving original message order and explicit authorship. Original message
+Markdown is not normalized. Attachment bytes are never fetched; available attachment
+metadata is retained in an `Attachments` section.
+
+Message inclusion and annotations are session-only. When supported, the browser's File
+System Access API opens a native Save As dialog. A successfully used file handle is kept
+in IndexedDB so the browser can offer that location on a later save; raw filesystem paths
+are never stored. Unsupported or denied file access falls back to a normal `.md` download.
 
 Run the independent parser tests with:
 
 ```powershell
 py -3 -m unittest discover -s tests -v
-node --test tests/document.test.mjs
+node --test tests/document.test.mjs tests/save-markdown.test.mjs
 ```
 
 ## Repository contents

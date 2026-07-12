@@ -42,7 +42,7 @@ class Handler(SimpleHTTPRequestHandler):
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Local ChatGPT Share conversation viewer")
+    parser = argparse.ArgumentParser(description="rend - A ChatGPT Conversation Renderer")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", default=8000, type=int)
     args = parser.parse_args()

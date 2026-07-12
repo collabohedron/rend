@@ -1,0 +1,17 @@
+:root { font-family: system-ui, sans-serif; color-scheme: light dark; line-height: 1.55; }
+body { margin: 0; }
+main { max-width: 56rem; margin: 2rem auto; padding: 0 1rem; }
+.controls { display: flex; gap: .5rem; margin-top: .4rem; }
+input { flex: 1; padding: .6rem; }
+button { padding: .6rem 1rem; }
+.summary { margin: 1.5rem 0; }
+.summary h2 { margin-bottom: .5rem; font-size: 1rem; }
+.summary dl { display: grid; grid-template-columns: max-content 1fr; gap: .15rem 1rem; margin: 0; }
+.summary dt { font-weight: 600; }
+.summary dd { margin: 0; overflow-wrap: anywhere; }
+.actions { margin: 1.5rem 0; }
+#conversation > h1 { margin: 2.5rem 0 1.5rem; }
+article { border-top: 1px solid #8886; padding: 1.5rem 0 1.75rem; }
+article h2 { margin: 0 0 .85rem; font-size: .85rem; text-transform: uppercase; color: #777; }
+.markdown-source { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+.attachment { border: 1px solid #8888; padding: .7rem; margin-top: .7rem; }

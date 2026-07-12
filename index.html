@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Conversation Viewer</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main>
+      <form id="import-form">
+        <label for="share-url">ChatGPT Share URL</label>
+        <div class="controls">
+          <input id="share-url" name="url" type="url" required
+                 placeholder="https://chatgpt.com/share/...">
+          <button type="submit">Import</button>
+        </div>
+      </form>
+      <p id="status" role="status"></p>
+      <section id="import-summary" class="summary" hidden>
+        <h2>Imported conversation</h2>
+        <dl></dl>
+      </section>
+      <section id="validation" class="summary" hidden>
+        <h2>Validation</h2>
+        <dl></dl>
+      </section>
+      <div class="actions">
+        <button id="export-markdown" type="button" disabled>Export Markdown</button>
+      </div>
+      <section id="conversation" aria-live="polite"></section>
+    </main>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

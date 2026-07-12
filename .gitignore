@@ -1,0 +1,30 @@
+# Local Codex/agent workspace state
+.agents/
+.codex/
+
+# Python bytecode, environments, and test output
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# JavaScript dependencies, if tooling is added locally later
+node_modules/
+
+# Editors and operating systems
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+# Local logs and temporary files
+*.log
+*.tmp
+*.bak

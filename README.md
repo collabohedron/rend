@@ -96,7 +96,7 @@ Imported conversations remain in memory for the duration of the session but are 
 
 ## Share links
 
-A ChatGPT Share URL remains publicly accessible on OpenAI's servers until you delete the link. Anyone with the link can view the conversation *(and, depending on ChatGPT's current Share-link behavior, may also be able to import it into their own chat history).*
+A ChatGPT Share URL remains publicly accessible on OpenAI's servers until you delete the link. Share links provide a viewable copy of the conversation to anyone with the link *(and, depending on ChatGPT's current Share-link behavior, recipients may also be able to import it into their own chat history).*
 
 After saving or printing your transcript, delete the Share link if it no longer needs to remain public. Deleting a Share link prevents future access through that link, but does not remove copies that others have already imported or saved.
 

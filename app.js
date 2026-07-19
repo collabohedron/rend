@@ -59,14 +59,12 @@ form.addEventListener("submit", async (event) => {
   event.preventDefault();
   showStatus("Importing...");
   try {
-    const result = await retrieveShareTranscript(new FormData(form).get("url"));
-    const imported = await importTranscriptForWorkspace(curated, result.document, { sourceUrl: result.source_url });
+    const snapshot = await retrieveShareTranscript(new FormData(form).get("url"));
+    const imported = await importTranscriptForWorkspace(curated, snapshot.document, { sourceUrl: snapshot.source_url });
     if (imported.outcome === "matching-transcript") {
       if (imported.transcriptChanged) markTranscriptChanged(projectSession);
-      activateWorkspace(curated, projectSession, result.document);
-      showStatus(imported.comparison === "prefix"
-        ? `${imported.appendedMessageCount} new message${imported.appendedMessageCount === 1 ? "" : "s"} appended.`
-        : imported.transcriptChanged ? "Matching transcript refreshed." : "Transcript already current.", true);
+      activateWorkspace(curated, projectSession);
+      showStatus(matchingImportStatus(imported), true);
       return;
     }
     const workspace = await prepareWorkspaceSwitch(projectSession, {
@@ -78,10 +76,9 @@ form.addEventListener("submit", async (event) => {
       return;
     }
     const nextSession = createProjectSession(imported.project);
-    activateWorkspace(imported.project, nextSession, result.document);
+    activateWorkspace(imported.project, nextSession);
     showStatus(imported.outcome === "different-transcript" ? "Different transcript opened as a new project." : "Import complete.", true);
   } catch (error) {
-    form.hidden = false;
     showStatus(error instanceof Error ? error.message : "Import failed");
   }
 });
@@ -103,7 +100,7 @@ openButton.addEventListener("click", async () => {
       handle: result.handle,
       archiveDigest: result.archiveDigest,
     });
-    activateWorkspace(result.project, nextSession, result.project.transcript.document);
+    activateWorkspace(result.project, nextSession);
     showStatus("Project opened.", true);
   } catch (error) {
     showStatus(error instanceof Error ? error.message : "Could not open project.");
@@ -157,23 +154,6 @@ document.addEventListener("pointerdown", (event) => {
   if (activeEditor && !activeEditor.contains(event.target)) closeActiveEditorInPlace(false);
 }, true);
 
-function resetViewer() {
-  curated = null;
-  projectSession = null;
-  editingDocumentHeader = false;
-  editingDocumentHeaderDraft = null;
-  editingSectionId = null;
-  editingNoteMessageId = null;
-  editingOriginal = null;
-  form.hidden = false;
-  conversation.replaceChildren();
-  summaryPanel.hidden = true;
-  documentActions.hidden = true;
-  safetyRecommendation.hidden = true;
-  hideStatus();
-  updateProjectState();
-}
-
 async function saveCurrentProject(asNew) {
   if (!projectSession) return false;
   finishActiveEditing();
@@ -197,7 +177,7 @@ async function saveCurrentProject(asNew) {
   }
 }
 
-function activateWorkspace(project, session, documentModel) {
+function activateWorkspace(project, session) {
   curated = project;
   projectSession = session;
   editingDocumentHeader = false;
@@ -205,12 +185,20 @@ function activateWorkspace(project, session, documentModel) {
   editingSectionId = null;
   editingNoteMessageId = null;
   editingOriginal = null;
-  renderSummary(documentModel);
+  renderSummary(project.transcript.document);
   renderCuratedDocument();
   updateGlobalInclusionControl();
   updateProjectState();
   summaryPanel.hidden = false;
   documentActions.hidden = false;
+}
+
+function matchingImportStatus(imported) {
+  if (imported.comparison === "prefix") {
+    const suffix = imported.appendedMessageCount === 1 ? "" : "s";
+    return `${imported.appendedMessageCount} new message${suffix} appended.`;
+  }
+  return imported.transcriptChanged ? "Matching transcript refreshed." : "Transcript already current.";
 }
 
 function chooseWorkspaceSwitch() {

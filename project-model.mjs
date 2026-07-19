@@ -2,7 +2,7 @@ export function createProject(documentModel, provenance = {}, dependencies = {})
   const uuid = dependencies.uuid || defaultUuid;
   const now = dependencies.now || (() => new Date().toISOString());
   const document = clone(documentModel);
-  validateDocument(document);
+  validateImportedDocument(document);
   const timestamp = now();
   const project = {
     id: uuid(),
@@ -30,7 +30,7 @@ export function projectFromContainer(components, dependencies = {}) {
   validateManifest(components?.manifest);
   const transcript = clone(components.transcript);
   if (transcript?.schema !== "rend-transcript" || transcript.schemaVersion !== 1) throw new Error("Unsupported transcript schema.");
-  validateDocument(transcript.document);
+  validateImportedDocument(transcript.document);
   const overlay = clone(components.editorial);
   validateEditorialOverlay(overlay, transcript.document);
   const project = {
@@ -129,7 +129,7 @@ export function validateProject(project) {
     throw new Error("Unsupported runtime editorial schema.");
   }
   if (typeof project.editorial.documentHeader !== "string") throw new Error("Document header is invalid.");
-  validateDocument(project.transcript.document);
+  validateImportedDocument(project.transcript.document);
   const messages = project.transcript.document.messages;
   const bindings = project.editorial.messageBindings;
   const nodes = project.editorial.nodes;
@@ -245,7 +245,7 @@ function emptyEditorialOverlay(documentHeader) {
   return { schema: "rend-editorial", schemaVersion: 1, documentHeader, messageEdits: [], sections: [] };
 }
 
-export function validateDocument(document) {
+export function validateImportedDocument(document) {
   if (!document || typeof document !== "object" || typeof document.title !== "string" || !Array.isArray(document.messages) || !document.messages.length) {
     throw new Error("Imported transcript is invalid.");
   }

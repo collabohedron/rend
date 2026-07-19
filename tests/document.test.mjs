@@ -351,7 +351,7 @@ test("pre-import chrome is hidden and review controls become sticky after import
   assert.match(html, /id="document-actions"[^>]*sticky-review[^>]*hidden/);
   assert.match(html, /id="safety-recommendation"[^>]*hidden/);
   assert.doesNotMatch(app, /form\.hidden = true/);
-  assert.match(app, /form\.hidden = false/);
+  assert.doesNotMatch(app, /form\.hidden = false/);
   assert.match(css, /\[hidden\] \{ display: none !important; \}/);
   assert.match(css, /\.sticky-review \{ position: sticky; top: 0/);
 });

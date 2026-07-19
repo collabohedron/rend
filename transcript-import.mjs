@@ -1,4 +1,4 @@
-import { createProject, validateDocument, validateProject } from "./project-model.mjs";
+import { createProject, validateImportedDocument, validateProject } from "./project-model.mjs";
 
 export async function retrieveShareTranscript(url, fetchObject = globalThis.fetch) {
   const response = await fetchObject("/api/import", {
@@ -13,7 +13,7 @@ export async function retrieveShareTranscript(url, fetchObject = globalThis.fetc
     throw new Error("Import response could not be parsed.");
   }
   if (!response.ok) throw new Error(result?.error || "Import failed.");
-  validateDocument(result?.document);
+  validateImportedDocument(result?.document);
   if (typeof result.source_url !== "string") throw new Error("Imported transcript provenance is invalid.");
   return result;
 }
@@ -41,13 +41,9 @@ export async function hashMessageContent(message, cryptoObject = globalThis.cryp
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-export async function transcriptsFunctionallyMatch(currentDocument, candidateDocument, dependencies = {}) {
-  return (await compareTranscripts(currentDocument, candidateDocument, dependencies)) === "exact";
-}
-
 export async function compareTranscripts(currentDocument, candidateDocument, dependencies = {}) {
-  validateDocument(currentDocument);
-  validateDocument(candidateDocument);
+  validateImportedDocument(currentDocument);
+  validateImportedDocument(candidateDocument);
   if (currentDocument.messages.length > candidateDocument.messages.length) return "mismatch";
   const hashMessage = dependencies.hashMessage || ((message) => hashMessageContent(message, dependencies.cryptoObject));
   const currentHashes = await Promise.all(currentDocument.messages.map((message) => hashMessage(message)));
@@ -58,14 +54,14 @@ export async function compareTranscripts(currentDocument, candidateDocument, dep
 
 export async function importTranscriptForWorkspace(currentProject, candidateDocument, provenance = {}, dependencies = {}) {
   const document = clone(candidateDocument);
-  validateDocument(document);
+  validateImportedDocument(document);
   if (!currentProject) {
-    return { outcome: "new-project", project: createProject(document, provenance, dependencies), transcriptChanged: true };
+    return { outcome: "new-project", project: createProject(document, provenance, dependencies) };
   }
   validateProject(currentProject);
   const comparison = await compareTranscripts(currentProject.transcript.document, document, dependencies);
   if (comparison === "mismatch") {
-    return { outcome: "different-transcript", project: createProject(document, provenance, dependencies), transcriptChanged: true };
+    return { outcome: "different-transcript", project: createProject(document, provenance, dependencies) };
   }
   const appendedMessageCount = document.messages.length - currentProject.transcript.document.messages.length;
   const changed = refreshCompatibleTranscript(currentProject, document, provenance, dependencies);
@@ -73,6 +69,11 @@ export async function importTranscriptForWorkspace(currentProject, candidateDocu
 }
 
 function refreshCompatibleTranscript(project, document, provenance, dependencies) {
+  const sourceUrl = String(provenance.sourceUrl || "");
+  const sameDocument = JSON.stringify(project.transcript.document) === JSON.stringify(document);
+  const sameSource = project.transcript.provenance?.sourceUrl === sourceUrl;
+  if (sameDocument && sameSource) return false;
+
   const importedAt = (dependencies.now || (() => new Date().toISOString()))();
   const transcript = {
     schema: "rend-transcript",
@@ -80,14 +81,11 @@ function refreshCompatibleTranscript(project, document, provenance, dependencies
     provenance: {
       kind: "chatgpt-share",
       importedAt,
-      sourceUrl: String(provenance.sourceUrl || ""),
+      sourceUrl,
       importerVersion: 1,
     },
     document,
   };
-  const sameDocument = JSON.stringify(project.transcript.document) === JSON.stringify(document);
-  const sameSource = project.transcript.provenance?.sourceUrl === transcript.provenance.sourceUrl;
-  if (sameDocument && sameSource) return false;
 
   const proposed = clone(project);
   proposed.transcript = transcript;

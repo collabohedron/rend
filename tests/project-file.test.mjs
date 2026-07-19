@@ -15,7 +15,6 @@ async function fixtureProject() {
   return createProject(documentModel, {}, {
     uuid: () => `00000000-0000-4000-8000-${String(++next).padStart(12, "0")}`,
     now: () => "2026-07-18T00:00:00.000Z",
-    hashMessage: async () => `sha256:${"1".repeat(64)}`,
   });
 }
 

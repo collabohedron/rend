@@ -9,7 +9,6 @@ import {
   hashMessageContent,
   importTranscriptForWorkspace,
   retrieveShareTranscript,
-  transcriptsFunctionallyMatch,
 } from "../transcript-import.mjs";
 
 const originalDocument = {
@@ -174,14 +173,14 @@ test("a longer non-prefix import remains a different transcript", async () => {
   assert.equal(result.project.editorial.messageBindings.every((binding) => binding.note === null), true);
 });
 
-test("duplicate message content remains deterministic under ordered exact comparison", async () => {
+test("duplicate message content remains deterministic under ordered comparison", async () => {
   const duplicated = structuredClone(originalDocument);
   duplicated.messages = [structuredClone(duplicated.messages[0]), structuredClone(duplicated.messages[0])];
   duplicated.messages[1].id = "duplicate";
-  assert.equal(await transcriptsFunctionallyMatch(duplicated, structuredClone(duplicated)), true);
+  assert.equal(await compareTranscripts(duplicated, structuredClone(duplicated)), "exact");
   const changed = structuredClone(duplicated);
   changed.messages[1].markdown = "not duplicate";
-  assert.equal(await transcriptsFunctionallyMatch(duplicated, changed), false);
+  assert.equal(await compareTranscripts(duplicated, changed), "mismatch");
 });
 
 test("ordered-prefix comparison reuses canonical hashing without hashing appended messages", async () => {

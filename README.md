@@ -79,6 +79,8 @@ The large document header is editable independently from the imported conversati
 
 Rend project files use the `.rend` extension. A project contains the immutable imported transcript, together with the separate editorial changes needed to continue working later. Select **Open Project...** to reopen one without retrieving the original Share URL.
 
+Importing another Share URL while a project is open compares ordered canonical message hashes before changing the workspace. An exact match refreshes the stored transcript, while an imported transcript that begins with the complete existing hash sequence extends the project with its newly appended messages. Both retain the project file and every existing editorial change; appended messages begin included and unannotated. Any non-prefix difference opens the import as a new unsaved project without transferring editorial work. When switching away from a project with unsaved changes, Rend offers Save, Don't Save, and Cancel.
+
 **Save Project** updates the active project. **Save Project As...** creates an independent copy. Rend displays whether the active project is saved or has unsaved changes.
 
 Markdown export and printing are output operations; they are not substitutes for the editable `.rend` project.

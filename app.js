@@ -20,11 +20,13 @@ import {
   updateNote,
   updateSection,
 } from "./document.mjs";
-import { bindingById, createProject, deriveProjectDisplayTitle, updateDocumentHeader } from "./project-model.mjs";
-import { createProjectSession, dirtyState, markEditorialChanged } from "./project-session.mjs";
+import { bindingById, deriveProjectDisplayTitle, updateDocumentHeader } from "./project-model.mjs";
+import { createProjectSession, dirtyState, markEditorialChanged, markTranscriptChanged } from "./project-session.mjs";
 import { openProject, saveProject, saveProjectAs } from "./project-file.mjs";
 import { FileHandleStore } from "./save-location.mjs";
 import { saveMarkdown } from "./save-markdown.mjs";
+import { importTranscriptForWorkspace, retrieveShareTranscript } from "./transcript-import.mjs";
+import { prepareWorkspaceSwitch } from "./workspace-switch.mjs";
 
 const form = document.querySelector("#import-form");
 const openButton = document.querySelector("#open-project");
@@ -42,6 +44,7 @@ const saveButton = document.querySelector("#save-markdown");
 const printButton = document.querySelector("#print-selected");
 const safetyRecommendation = document.querySelector("#safety-recommendation");
 const dismissSafetyRecommendation = document.querySelector("#dismiss-safety-recommendation");
+const workspaceSwitchDialog = document.querySelector("#workspace-switch-dialog");
 const handleStore = new FileHandleStore();
 let curated = null;
 let projectSession = null;
@@ -54,25 +57,29 @@ let statusTimer = null;
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
-  if (!confirmDiscardDirty()) return;
   showStatus("Importing...");
   try {
-    const response = await fetch("/api/import", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: new FormData(form).get("url") }),
+    const result = await retrieveShareTranscript(new FormData(form).get("url"));
+    const imported = await importTranscriptForWorkspace(curated, result.document, { sourceUrl: result.source_url });
+    if (imported.outcome === "matching-transcript") {
+      if (imported.transcriptChanged) markTranscriptChanged(projectSession);
+      activateWorkspace(curated, projectSession, result.document);
+      showStatus(imported.comparison === "prefix"
+        ? `${imported.appendedMessageCount} new message${imported.appendedMessageCount === 1 ? "" : "s"} appended.`
+        : imported.transcriptChanged ? "Matching transcript refreshed." : "Transcript already current.", true);
+      return;
+    }
+    const workspace = await prepareWorkspaceSwitch(projectSession, {
+      choose: chooseWorkspaceSwitch,
+      save: () => saveCurrentProject(false),
     });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error || "Import failed");
-    curated = await createProject(result.document, { sourceUrl: result.source_url });
-    projectSession = createProjectSession(curated);
-    renderSummary(result.document);
-    renderCuratedDocument();
-    updateGlobalInclusionControl();
-    updateProjectState();
-    summaryPanel.hidden = false;
-    documentActions.hidden = false;
-    showStatus("Import complete.", true);
+    if (!workspace.proceed) {
+      showStatus("Import cancelled; current project unchanged.", true);
+      return;
+    }
+    const nextSession = createProjectSession(imported.project);
+    activateWorkspace(imported.project, nextSession, result.document);
+    showStatus(imported.outcome === "different-transcript" ? "Different transcript opened as a new project." : "Import complete.", true);
   } catch (error) {
     form.hidden = false;
     showStatus(error instanceof Error ? error.message : "Import failed");
@@ -80,22 +87,23 @@ form.addEventListener("submit", async (event) => {
 });
 
 openButton.addEventListener("click", async () => {
-  if (!confirmDiscardDirty()) return;
   try {
     const result = await openProject({ windowObject: window, documentObject: document });
     if (result.method === "cancelled") return;
-    curated = result.project;
-    projectSession = createProjectSession(curated, {
+    const workspace = await prepareWorkspaceSwitch(projectSession, {
+      choose: chooseWorkspaceSwitch,
+      save: () => saveCurrentProject(false),
+    });
+    if (!workspace.proceed) {
+      showStatus("Open cancelled; current project unchanged.", true);
+      return;
+    }
+    const nextSession = createProjectSession(result.project, {
       persisted: true,
       handle: result.handle,
       archiveDigest: result.archiveDigest,
     });
-    renderSummary(curated.transcript.document);
-    renderCuratedDocument();
-    updateGlobalInclusionControl();
-    updateProjectState();
-    summaryPanel.hidden = false;
-    documentActions.hidden = false;
+    activateWorkspace(result.project, nextSession, result.project.transcript.document);
     showStatus("Project opened.", true);
   } catch (error) {
     showStatus(error instanceof Error ? error.message : "Could not open project.");
@@ -167,7 +175,7 @@ function resetViewer() {
 }
 
 async function saveCurrentProject(asNew) {
-  if (!projectSession) return;
+  if (!projectSession) return false;
   finishActiveEditing();
   updateProjectState();
   try {
@@ -177,18 +185,46 @@ async function saveCurrentProject(asNew) {
     });
     if (result.method === "cancelled") {
       showStatus("Project save cancelled.", true);
-      return;
+      return false;
     }
     curated = projectSession.project;
     updateProjectState();
     showStatus(result.method === "download" ? "Rend project download started." : "Project saved.", true);
+    return true;
   } catch (error) {
     showStatus(error instanceof Error ? error.message : "Could not save project.");
+    return false;
   }
 }
 
-function confirmDiscardDirty() {
-  return !projectSession || !dirtyState(projectSession).any || window.confirm("Discard unsaved project changes?");
+function activateWorkspace(project, session, documentModel) {
+  curated = project;
+  projectSession = session;
+  editingDocumentHeader = false;
+  editingDocumentHeaderDraft = null;
+  editingSectionId = null;
+  editingNoteMessageId = null;
+  editingOriginal = null;
+  renderSummary(documentModel);
+  renderCuratedDocument();
+  updateGlobalInclusionControl();
+  updateProjectState();
+  summaryPanel.hidden = false;
+  documentActions.hidden = false;
+}
+
+function chooseWorkspaceSwitch() {
+  return new Promise((resolve) => {
+    workspaceSwitchDialog.returnValue = "cancel";
+    const cancel = () => { workspaceSwitchDialog.returnValue = "cancel"; };
+    const close = () => {
+      workspaceSwitchDialog.removeEventListener("cancel", cancel);
+      resolve(new Set(["save", "discard", "cancel"]).has(workspaceSwitchDialog.returnValue) ? workspaceSwitchDialog.returnValue : "cancel");
+    };
+    workspaceSwitchDialog.addEventListener("cancel", cancel, { once: true });
+    workspaceSwitchDialog.addEventListener("close", close, { once: true });
+    workspaceSwitchDialog.showModal();
+  });
 }
 
 function showStatus(message, transient = false) {

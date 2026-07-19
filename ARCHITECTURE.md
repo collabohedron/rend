@@ -43,11 +43,13 @@ Changing one should require little or no change to the other.
 
 ---
 
-### Imported conversations are immutable
+### Imported transcript snapshots are immutable during editing
 
-The imported transcript is never modified.
+Normal editing never modifies the imported transcript snapshot.
 
 User edits create editorial content that exists alongside the transcript.
+
+A later import may transactionally replace the snapshot when its ordered canonical message hashes are identical, or extend it when the complete existing sequence is an exact prefix of the imported sequence. Appended messages receive new default editorial bindings; all existing editorial state remains attached by ordinal to the verified prefix. The comparison hashes role, line-ending-normalized Markdown, and stable attachment descriptors. It performs no fuzzy matching, relocation, or editorial reconciliation. A non-prefix import becomes an independent project, and any retrieval, parsing, validation, or comparison failure leaves the active project untouched.
 
 Examples include:
 
@@ -156,6 +158,8 @@ The persisted editorial component is a sparse overlay: untouched transcript mess
 The local server packs and unpacks container bytes but does not retain project data or filesystem paths.
 
 Project persistence preserves the editable workspace. Markdown export and printing are projections of that workspace, rather than editable project formats.
+
+`transcript-import.mjs` owns canonical message hashing, exact refresh, and strict append-only prefix extension. `workspace-switch.mjs` owns the shared Save / Don't Save / Cancel decision used before replacing an active dirty workspace. Neither changes the `.rend` container schema.
 
 Rendering decisions should not require changes to the parser.
 

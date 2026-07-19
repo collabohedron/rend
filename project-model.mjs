@@ -245,7 +245,7 @@ function emptyEditorialOverlay(documentHeader) {
   return { schema: "rend-editorial", schemaVersion: 1, documentHeader, messageEdits: [], sections: [] };
 }
 
-function validateDocument(document) {
+export function validateDocument(document) {
   if (!document || typeof document !== "object" || typeof document.title !== "string" || !Array.isArray(document.messages) || !document.messages.length) {
     throw new Error("Imported transcript is invalid.");
   }

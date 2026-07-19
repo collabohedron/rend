@@ -17,6 +17,17 @@
         </div>
       </form>
       <p id="status" class="application-chrome transient-status" role="status" hidden></p>
+      <dialog id="workspace-switch-dialog" class="workspace-switch-dialog">
+        <form method="dialog">
+          <h2>Save changes?</h2>
+          <p>The current project has unsaved changes.</p>
+          <div class="workspace-switch-actions">
+            <button type="submit" value="save">Save</button>
+            <button type="submit" value="discard">Don't Save</button>
+            <button type="submit" value="cancel">Cancel</button>
+          </div>
+        </form>
+      </dialog>
 
       <section id="summary-panel" class="summary-panel application-chrome" hidden>
         <section id="import-summary" class="summary">

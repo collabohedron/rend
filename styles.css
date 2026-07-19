@@ -19,6 +19,10 @@ button { padding: .45rem .7rem; }
 .project-state.dirty { color: #a55b00; }
 .include-all-control { white-space: nowrap; }
 .transient-status { margin: .7rem 0; color: #666; }
+.workspace-switch-dialog { max-width: 25rem; border: 1px solid #8888; padding: 1rem 1.15rem; }
+.workspace-switch-dialog::backdrop { background: #0006; }
+.workspace-switch-dialog h2 { margin-top: 0; font-size: 1.1rem; }
+.workspace-switch-actions { display: flex; justify-content: flex-end; gap: .5rem; }
 .safety-recommendation { display: flex; align-items: flex-start; gap: .75rem; margin: .45rem 0 0; padding: .55rem .65rem; border-left: 3px solid #F00; background: #8881; }
 .safety-recommendation span { flex: 1; }
 .dismiss-notice { padding: .05rem .3rem; border: 1px solid transparent; background: transparent; color: inherit; }

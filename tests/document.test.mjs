@@ -383,3 +383,16 @@ test("Share-link reminder can be dismissed and shown again by later actions", as
   assert.match(app, /safetyRecommendation\.hidden = true/);
   assert.equal((app.match(/showSafetyRecommendation\(\)/g) || []).length, 3);
 });
+
+test("imports and project opens share the transactional workspace-switch workflow", async () => {
+  const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
+  const app = await readFile(new URL("../app.js", import.meta.url), "utf8");
+  assert.match(html, /id="workspace-switch-dialog"/);
+  assert.match(html, />Save<\/button>/);
+  assert.match(html, />Don't Save<\/button>/);
+  assert.match(html, />Cancel<\/button>/);
+  assert.equal((app.match(/prepareWorkspaceSwitch\(projectSession/g) || []).length, 2);
+  assert.match(app, /imported\.outcome === "matching-transcript"/);
+  assert.match(app, /markTranscriptChanged\(projectSession\)/);
+  assert.doesNotMatch(app, /confirmDiscardDirty/);
+});

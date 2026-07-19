@@ -13,7 +13,7 @@ Searching, reviewing earlier decisions, copying large sections, or producing a c
 
 Rend imports a public ChatGPT Share page and renders the entire conversation as a continuous document.
 
-Once imported, you can search with normal browser tools, annotate the transcript, save the workspace as a Rend project, export Markdown, or print a clean transcript.
+Once imported, Rend creates an editable local project. You can search it with normal browser tools, annotate the transcript, save your work as a local project file to open and continue editing later, export your curated transcript (with annotations) as a final Markdown file, or print it directly.
 
 
 
@@ -21,14 +21,15 @@ Once imported, you can search with normal browser tools, annotate the transcript
 
 - Import a single public ChatGPT Share URL
 - Render the entire conversation as one continuous document
-- Search using your browser's built-in Find (`Ctrl+F`)
-- Copy individual messages as Markdown
-- Include or omit messages from exported output; section headings follow their represented message zones
-- Add section markers to structure the transcript
-- Add editorial notes for later review
 - Save and reopen local `.rend` project files
-- Save curated transcripts as Markdown
-- Print curated transcripts without interface controls
+- Search using your browser's built-in Find (`Ctrl+F`)
+- Include or omit individual messages from exported output
+- Add section markers to structure the transcript
+- Include or omit marked sections with a single click
+- Add editorial notes for later review
+- Edit the document header independently from the imported conversation title
+- Copy individual messages as Markdown
+- Print curated transcripts, or export them as Markdown
 
 ## Requirements
 
@@ -72,11 +73,11 @@ After importing a conversation you can:
 - Save the curated transcript with **Save Markdown As...**.
 - Print only the selected content with **Print Selected**.
 
-The large document header is editable independently from the imported conversation title and supplies export filenames. Section markers and notes are editorial annotations stored separately from the immutable imported transcript. A section marker is included whenever any message in the zone it introduces is included; markers without a following message zone remain included.
+The large document header is editable independently from the imported conversation title and supplies export filenames. The document header, section markers, and notes are editorial annotations stored separately from the immutable imported transcript. Section markers automatically appear in output whenever the section they introduce contains included content. Markers that do not introduce a section always appear.
 
 ## Rend projects and output
 
-Rend project files use the `.rend` extension. A project contains the normalized imported transcript and the separate editorial state needed to continue working later. Select **Open Project...** to reopen one without retrieving the original Share URL.
+Rend project files use the `.rend` extension. A project contains the immutable imported transcript, together with the separate editorial changes needed to continue working later. Select **Open Project...** to reopen one without retrieving the original Share URL.
 
 **Save Project** updates the active project. **Save Project As...** creates an independent copy. Rend displays whether the active project is saved or has unsaved changes.
 

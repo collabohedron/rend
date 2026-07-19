@@ -125,7 +125,9 @@ The normalized importer model contains User and Assistant messages. The separate
 
 Messages may contain user-authored annotations such as Notes.
 
-The editable document header is persistent editorial metadata, not a node in the ordered transcript/section-marker stream. Section-marker output inclusion is derived at projection time from the following message zone; island markers remain included and no marker inclusion state is persisted.
+The editable document header is persistent editorial metadata, not a node in the ordered transcript/section-marker stream.
+
+The inclusion state of each section marker is not stored directly, but is derived from the state of the next adjacent message zone. Island markers remain included, and no marker inclusion state is persisted.
 
 Renderers, exporters, printers, and future navigation tools should depend only on this model.
 
@@ -133,7 +135,7 @@ Renderers, exporters, printers, and future navigation tools should depend only o
 
 ## Rendering
 
-`app.js` renders a Rend project composed of an immutable normalized transcript and separate editorial state.
+`app.js` renders a Rend project composed of an immutable normalized transcript, together with the user's editorial changes.
 
 It has no knowledge of ChatGPT's serialization format.
 
@@ -145,7 +147,15 @@ Its responsibilities include:
 - Markdown export
 - printing
 
-Project persistence is divided between browser-side project/session modules and the local Python container boundary. `.rend` files are validated ZIP containers with separate manifest, transcript, and editorial JSON components. The persisted editorial component is a sparse overlay: untouched transcript messages inherit membership, inclusion, and order directly from the immutable transcript, while the document header, notes, omissions, section markers, and their actual positions are stored. The local server packs and unpacks container bytes but does not retain project data or filesystem paths.
+Project persistence is divided between browser-side project/session modules and the local Python container boundary. 
+
+`.rend` files are validated ZIP containers with separate manifest, transcript, and editorial JSON components. 
+
+The persisted editorial component is a sparse overlay: untouched transcript messages inherit membership, inclusion, and order directly from the immutable transcript, while the document header, notes, omissions, section markers, and their actual positions are stored. 
+
+The local server packs and unpacks container bytes but does not retain project data or filesystem paths.
+
+Project persistence preserves the editable workspace. Markdown export and printing are projections of that workspace, rather than editable project formats.
 
 Rendering decisions should not require changes to the parser.
 

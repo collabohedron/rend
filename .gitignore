@@ -12,6 +12,7 @@ env/
 .pytest_cache/
 .coverage
 htmlcov/
+private/
 
 # JavaScript dependencies, if tooling is added locally later
 node_modules/

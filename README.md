@@ -13,7 +13,7 @@ Searching, reviewing earlier decisions, copying large sections, or producing a c
 
 Rend imports a public ChatGPT Share page and renders the entire conversation as a continuous document.
 
-Once imported, you can search with normal browser tools, annotate the transcript, curate it for export, save as Markdown, or print a clean transcript.
+Once imported, you can search with normal browser tools, annotate the transcript, save the workspace as a Rend project, export Markdown, or print a clean transcript.
 
 
 
@@ -23,9 +23,10 @@ Once imported, you can search with normal browser tools, annotate the transcript
 - Render the entire conversation as one continuous document
 - Search using your browser's built-in Find (`Ctrl+F`)
 - Copy individual messages as Markdown
-- Include or omit messages and section markers from exported output
+- Include or omit messages from exported output; section headings follow their represented message zones
 - Add section markers to structure the transcript
 - Add editorial notes for later review
+- Save and reopen local `.rend` project files
 - Save curated transcripts as Markdown
 - Print curated transcripts without interface controls
 
@@ -63,22 +64,27 @@ Select **Import**.
 After importing a conversation you can:
 
 - Review the transcript as one continuous document.
-- Include or omit individual messages and section markers.
+- Include or omit individual messages and whole preceding message sections.
 - Add section markers to structure the transcript.
 - Add editorial notes for later review.
 - Copy individual messages as Markdown.
+- Save the editable workspace with **Save Project** or **Save Project As...**.
 - Save the curated transcript with **Save Markdown As...**.
 - Print only the selected content with **Print Selected**.
 
-Section markers and notes are editorial annotations. They do not modify the imported conversation; they become part of the curated transcript used for Markdown export and printing.
+The large document header is editable independently from the imported conversation title and supplies export filenames. Section markers and notes are editorial annotations stored separately from the immutable imported transcript. A section marker is included whenever any message in the zone it introduces is included; markers without a following message zone remain included.
 
-*Annotations and inclusion choices exist only for the current session.  Refreshing the page starts with a clean transcript.*
+## Rend projects and output
 
-## Saving
+Rend project files use the `.rend` extension. A project contains the normalized imported transcript and the separate editorial state needed to continue working later. Select **Open Project...** to reopen one without retrieving the original Share URL.
 
-When supported by the browser, Rend uses the File System Access API to present the native **Save As...** dialog and offers the last successfully used save location by default.
+**Save Project** updates the active project. **Save Project As...** creates an independent copy. Rend displays whether the active project is saved or has unsaved changes.
 
-If native file access is unavailable or denied, Rend automatically falls back to downloading a Markdown file.
+Markdown export and printing are output operations; they are not substitutes for the editable `.rend` project.
+
+When supported by the browser, Rend uses the File System Access API for native project and Markdown file dialogs. If native project file access is unavailable, saving a project falls back to a `.rend` download.
+
+If native Markdown file access is unavailable or denied, Rend falls back to downloading a Markdown file.
 
 ## Privacy
 
@@ -92,7 +98,7 @@ It does **not**:
 - crawl additional pages
 - retrieve attachment contents
 
-Imported conversations remain in memory for the duration of the session but are not stored by Rend.
+Imported conversations remain in memory until you explicitly save a local `.rend` project. Rend does not upload or remotely store project files. A `.rend` project contains conversation content, editorial notes, and the original Share URL as provenance; protect it accordingly.
 
 ## Share links
 
@@ -119,7 +125,7 @@ Run the test suite with:
 
 ```powershell
 py -3 -m unittest discover -s tests -v
-node --test tests/document.test.mjs tests/save-markdown.test.mjs
+node --test tests/*.test.mjs
 ```
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for implementation details and design rationale, and [COMPLIANCE.md](COMPLIANCE.md) for the project's intended scope and interaction with ChatGPT Share pages.

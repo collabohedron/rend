@@ -5,24 +5,27 @@ import test from "node:test";
 import {
   addNote,
   addSection,
+  adjacentAnchorId,
+  anchorOutputState,
   canMoveSection,
   copyMarkdown,
-  createCuratedDocument,
   curatedStream,
   inclusionState,
   messageMarkdown,
   moveSection,
+  previousZoneState,
   removeNote,
   removeSection,
   safeFilename,
   setAllMessagesIncluded,
   setMessageIncluded,
-  setSectionIncluded,
   summarize,
+  togglePreviousZone,
   toMarkdown,
   updateNote,
   updateSection,
 } from "../document.mjs";
+import { createProject, projectFromContainer, serializeEditorialOverlay, updateDocumentHeader } from "../project-model.mjs";
 
 const source = {
   title: "Curated Fixture",
@@ -42,11 +45,19 @@ const source = {
   ],
 };
 
-test("all messages are included by default and global state is tri-state", () => {
-  const curated = createCuratedDocument(source);
+async function makeProject() {
+  return createProject(source, { sourceUrl: "https://chatgpt.com/share/fixture" });
+}
+
+function bindingId(project, sourceId) {
+  return project.editorial.messageBindings.find((binding) => binding.sourceMessageId === sourceId).id;
+}
+
+test("all messages are included by default and global state is tri-state", async () => {
+  const curated = await makeProject();
   assert.equal(inclusionState(curated), "all");
-  assert.deepEqual(Array.from(curated.included.values()), [true, true, true]);
-  setMessageIncluded(curated, "assistant-1", false);
+  assert.deepEqual(curated.editorial.messageBindings.map((binding) => binding.included), [true, true, true]);
+  setMessageIncluded(curated, bindingId(curated, "assistant-1"), false);
   assert.equal(inclusionState(curated), "mixed");
   setAllMessagesIncluded(curated, false);
   assert.equal(inclusionState(curated), "none");
@@ -54,16 +65,16 @@ test("all messages are included by default and global state is tri-state", () =>
   assert.equal(inclusionState(curated), "all");
 });
 
-test("omitted messages are excluded from Markdown and curated print stream", () => {
-  const curated = createCuratedDocument(source);
-  setMessageIncluded(curated, "assistant-1", false);
+test("omitted messages are excluded from Markdown and curated print stream", async () => {
+  const curated = await makeProject();
+  setMessageIncluded(curated, bindingId(curated, "assistant-1"), false);
   assert.ok(!toMarkdown(curated).includes("console.log"));
   const printableIds = curatedStream(curated).filter((node) => node.kind === "message").map((node) => node.message.id);
   assert.deepEqual(printableIds, ["user-1", "user-2"]);
 });
 
-test("authorship, source Markdown, and message order are preserved", () => {
-  const markdown = toMarkdown(createCuratedDocument(source));
+test("authorship, source Markdown, and message order are preserved", async () => {
+  const markdown = toMarkdown(await makeProject());
   assert.ok(markdown.startsWith("# Curated Fixture\n\n## USER\n\n# Existing heading"));
   assert.ok(markdown.indexOf("## USER") < markdown.indexOf("## ASSISTANT"));
   assert.ok(markdown.indexOf("## ASSISTANT") < markdown.lastIndexOf("## USER"));
@@ -78,10 +89,10 @@ test("copy returns only the selected original message body", () => {
   assert.ok(!copied.includes("Attachments"));
 });
 
-test("section markers are first-class nodes inserted before a selected message", () => {
-  const curated = createCuratedDocument(source);
-  const section = addSection(curated, "assistant-1", "Lock Rule Redesign");
-  assert.equal(section.included, true);
+test("section markers are first-class nodes inserted before a selected message", async () => {
+  const curated = await makeProject();
+  const section = addSection(curated, bindingId(curated, "assistant-1"), "Lock Rule Redesign");
+  assert.equal("included" in section, false);
   const nodes = curatedStream(curated, { includeOmitted: true });
   assert.deepEqual(nodes.slice(1, 3).map((node) => node.kind === "message" ? node.message.id : node.section.id), [section.id, "assistant-1"]);
   const markdown = toMarkdown(curated);
@@ -93,63 +104,164 @@ test("section markers are first-class nodes inserted before a selected message",
   assert.ok(!toMarkdown(curated).includes("Lock Rule Redesign"));
 });
 
-test("section markers can be omitted independently from Markdown and print stream", () => {
-  const curated = createCuratedDocument(source);
-  const section = addSection(curated, "assistant-1", "Optional Section");
-  setSectionIncluded(curated, section.id, false);
-  assert.ok(!toMarkdown(curated).includes("Optional Section"));
-  assert.ok(!curatedStream(curated).some((node) => node.kind === "section"));
-  const reviewNode = curatedStream(curated, { includeOmitted: true }).find((node) => node.kind === "section");
-  assert.equal(reviewNode.section.id, section.id);
-  assert.equal(reviewNode.included, false);
-  assert.deepEqual(curated.source.messages.map((message) => message.id), ["user-1", "assistant-1", "user-2"]);
+test("bounding anchors derive output inclusion from their following message zone", async () => {
+  const curated = await makeProject();
+  const section = addSection(curated, bindingId(curated, "assistant-1"), "Derived Section");
+  assert.deepEqual(anchorOutputState(curated, section.id), {
+    kind: "bounding", included: true,
+    messageBindingIds: [bindingId(curated, "assistant-1"), bindingId(curated, "user-2")],
+  });
+  setMessageIncluded(curated, bindingId(curated, "assistant-1"), false);
+  assert.equal(anchorOutputState(curated, section.id).included, true, "mixed zones retain their bounding anchor");
+  setMessageIncluded(curated, bindingId(curated, "user-2"), false);
+  assert.equal(anchorOutputState(curated, section.id).included, false, "fully omitted zones omit their bounding anchor");
+  assert.ok(!toMarkdown(curated).includes("Derived Section"));
+  assert.equal(curatedStream(curated, { includeOmitted: true }).find((node) => node.kind === "section").included, false);
 });
 
-test("section markers move without changing imported message order", () => {
-  const curated = createCuratedDocument(source);
-  const section = addSection(curated, "assistant-1", "Movable");
+test("consecutive anchors produce islands followed by a bounding anchor", async () => {
+  const curated = await makeProject();
+  const first = addSection(curated, bindingId(curated, "assistant-1"), "Island");
+  const second = addSection(curated, bindingId(curated, "assistant-1"), "Bounding");
+  assert.deepEqual(anchorOutputState(curated, first.id), { kind: "island", included: true, messageBindingIds: [] });
+  assert.equal(anchorOutputState(curated, second.id).kind, "bounding");
+  setMessageIncluded(curated, bindingId(curated, "assistant-1"), false);
+  setMessageIncluded(curated, bindingId(curated, "user-2"), false);
+  const markdown = toMarkdown(curated);
+  assert.ok(markdown.includes("## Island"));
+  assert.ok(!markdown.includes("## Bounding"));
+});
+
+test("moving an anchor dynamically changes island and bounding classification", async () => {
+  const curated = await makeProject();
+  const first = addSection(curated, bindingId(curated, "assistant-1"), "First");
+  const second = addSection(curated, bindingId(curated, "assistant-1"), "Second");
+  assert.equal(anchorOutputState(curated, first.id).kind, "island");
+  moveSection(curated, first.id, "down");
+  assert.equal(anchorOutputState(curated, first.id).kind, "bounding");
+  assert.equal(anchorOutputState(curated, second.id).kind, "bounding");
+});
+
+test("previous-section state respects anchor boundaries and normalizes mixed zones to omitted", async () => {
+  const curated = await makeProject();
+  const section = addSection(curated, bindingId(curated, "user-2"), "Current");
+  assert.equal(previousZoneState(curated, section.id).state, "included");
+  setMessageIncluded(curated, bindingId(curated, "assistant-1"), false);
+  assert.equal(previousZoneState(curated, section.id).state, "mixed");
+  assert.equal(togglePreviousZone(curated, section.id), true);
+  assert.deepEqual(previousZoneState(curated, section.id), {
+    state: "omitted", messageBindingIds: [bindingId(curated, "user-1"), bindingId(curated, "assistant-1")],
+  });
+  togglePreviousZone(curated, section.id);
+  assert.equal(previousZoneState(curated, section.id).state, "included");
+  togglePreviousZone(curated, section.id);
+  assert.equal(previousZoneState(curated, section.id).state, "omitted");
+});
+
+test("previous-section control is unavailable without an immediately preceding message zone", async () => {
+  const curated = await makeProject();
+  const first = addSection(curated, bindingId(curated, "user-1"), "First");
+  const island = addSection(curated, bindingId(curated, "user-1"), "Island");
+  assert.equal(previousZoneState(curated, first.id).state, "unavailable");
+  assert.equal(previousZoneState(curated, island.id).state, "unavailable");
+  assert.equal(togglePreviousZone(curated, island.id), false);
+  assert.equal(anchorOutputState(curated, first.id).included, true);
+});
+
+test("anchor navigation wraps through island and bounding anchors", async () => {
+  const curated = await makeProject();
+  const first = addSection(curated, bindingId(curated, "assistant-1"), "Island");
+  assert.equal(adjacentAnchorId(curated, first.id, "next"), null);
+  const second = addSection(curated, bindingId(curated, "assistant-1"), "Bounding");
+  const third = addSection(curated, bindingId(curated, "user-2"), "Final");
+  assert.equal(adjacentAnchorId(curated, first.id, "previous"), third.id);
+  assert.equal(adjacentAnchorId(curated, first.id, "next"), second.id);
+  assert.equal(adjacentAnchorId(curated, third.id, "next"), first.id);
+});
+
+test("section markers move without changing imported message order", async () => {
+  const curated = await makeProject();
+  const section = addSection(curated, bindingId(curated, "assistant-1"), "Movable");
   assert.equal(canMoveSection(curated, section.id, "up"), true);
   moveSection(curated, section.id, "up");
   assert.deepEqual(curatedStream(curated, { includeOmitted: true }).map((node) => node.kind === "message" ? node.message.id : "section"), ["section", "user-1", "assistant-1", "user-2"]);
   moveSection(curated, section.id, "down");
   moveSection(curated, section.id, "down");
   assert.deepEqual(curatedStream(curated, { includeOmitted: true }).map((node) => node.kind === "message" ? node.message.id : "section"), ["user-1", "assistant-1", "section", "user-2"]);
-  assert.deepEqual(curated.source.messages.map((message) => message.id), ["user-1", "assistant-1", "user-2"]);
+  assert.deepEqual(curated.transcript.document.messages.map((message) => message.id), ["user-1", "assistant-1", "user-2"]);
 });
 
-test("a note belongs to its message and exports immediately after it", () => {
-  const curated = createCuratedDocument(source);
-  const note = addNote(curated, "assistant-1", "Settled here.\nKeep child rules.");
+test("a note belongs to its message and exports immediately after it", async () => {
+  const curated = await makeProject();
+  const assistantBinding = bindingId(curated, "assistant-1");
+  const note = addNote(curated, assistantBinding, "Settled here.\nKeep child rules.");
   const messageNode = curatedStream(curated, { includeOmitted: true }).find((node) => node.kind === "message" && node.message.id === "assistant-1");
   assert.equal(messageNode.note, note);
   let markdown = toMarkdown(curated);
   assert.ok(markdown.includes("> **Note**\n>\n> Settled here.\n> Keep child rules."));
   assert.ok(markdown.indexOf("### Attachments") < markdown.indexOf("> **Note**"));
   assert.ok(markdown.indexOf("> **Note**") < markdown.lastIndexOf("## USER"));
-  updateNote(curated, "assistant-1", "Edited note");
+  updateNote(curated, assistantBinding, "Edited note");
   assert.ok(toMarkdown(curated).includes("> Edited note"));
-  removeNote(curated, "assistant-1");
+  removeNote(curated, assistantBinding);
   assert.ok(!toMarkdown(curated).includes("Edited note"));
 });
 
-test("omitting a message omits its note but not structural sections", () => {
-  const curated = createCuratedDocument(source);
-  addSection(curated, "assistant-1", "Still exported");
-  addNote(curated, "assistant-1", "Attached note");
-  setMessageIncluded(curated, "assistant-1", false);
+test("omitting a message omits its note while mixed-zone anchors remain", async () => {
+  const curated = await makeProject();
+  const assistantBinding = bindingId(curated, "assistant-1");
+  addSection(curated, assistantBinding, "Still exported");
+  addNote(curated, assistantBinding, "Attached note");
+  setMessageIncluded(curated, assistantBinding, false);
   let markdown = toMarkdown(curated);
   assert.ok(markdown.includes("Still exported"));
   assert.ok(!markdown.includes("Attached note"));
   setAllMessagesIncluded(curated, false);
   markdown = toMarkdown(curated);
-  assert.ok(markdown.includes("Still exported"));
+  assert.ok(!markdown.includes("Still exported"));
   assert.ok(!markdown.includes("Last message"));
+});
+
+test("document header edits affect Markdown and filenames without joining the anchor stream", async () => {
+  const curated = await makeProject();
+  updateDocumentHeader(curated, "Edited document");
+  addSection(curated, bindingId(curated, "user-1"), "Leading anchor");
+  assert.ok(toMarkdown(curated).startsWith("# Edited document\n\n## Leading anchor"));
+  assert.equal(safeFilename(curated.editorial.documentHeader), "Edited document.md");
+  assert.equal(curatedStream(curated, { includeOmitted: true }).filter((node) => node.kind === "section").length, 1);
+});
+
+test("save/open preserves sparse state and reproduces identical derived output", async () => {
+  const curated = await makeProject();
+  updateDocumentHeader(curated, "Saved header");
+  const island = addSection(curated, bindingId(curated, "assistant-1"), "Island");
+  const bounding = addSection(curated, bindingId(curated, "assistant-1"), "Bounding");
+  setMessageIncluded(curated, bindingId(curated, "assistant-1"), false);
+  setMessageIncluded(curated, bindingId(curated, "user-2"), false);
+  const markdown = toMarkdown(curated);
+  const overlay = serializeEditorialOverlay(curated);
+  assert.equal("included" in overlay.sections[0], false);
+  const reopened = projectFromContainer({
+    manifest: {
+      format: "rend-project", manifestVersion: 1, projectId: curated.id,
+      createdAt: curated.createdAt, savedAt: "2026-07-18T01:00:00.000Z", saveGeneration: 1,
+    },
+    transcript: curated.transcript,
+    editorial: overlay,
+  });
+  assert.equal(reopened.editorial.documentHeader, "Saved header");
+  assert.equal(anchorOutputState(reopened, island.id).kind, "island");
+  assert.equal(anchorOutputState(reopened, bounding.id).included, false);
+  assert.equal(toMarkdown(reopened), markdown);
 });
 
 test("summary and attachment metadata remain exact", () => {
   assert.deepEqual(summarize(source), { title: "Curated Fixture", totalMessages: 3, userMessages: 2, assistantMessages: 1, messagesWithMarkdown: 3, attachments: 1, citations: 1, contentReferences: 1 });
   assert.ok(messageMarkdown(source.messages[1]).includes("sediment://file_1"));
   assert.equal(safeFilename("A: conversation?"), "A- conversation-.md");
+  assert.equal(safeFilename("NUL"), "_NUL.md");
+  assert.equal(safeFilename("draft. "), "draft.md");
+  assert.equal(safeFilename("a/b\\c:d*e?f\"g<h>i|j"), "a-b-c-d-e-f-g-h-i-j.md");
 });
 
 test("message body has no inclusion click handler", async () => {
@@ -160,7 +272,7 @@ test("message body has no inclusion click handler", async () => {
 
 test("notes render inside their message and compact controls have tooltips", async () => {
   const app = await readFile(new URL("../app.js", import.meta.url), "utf8");
-  assert.match(app, /article\.append\(createNoteElement\(note\)\)/);
+  assert.match(app, /article\.append\(createNoteElement\(note, binding\.id\)\)/);
   assert.match(app, /Copy message Markdown/);
   assert.match(app, /Add section marker before this message/);
   assert.match(app, /Add note to this message/);
@@ -199,12 +311,29 @@ test("message controls occupy four semantic edge regions", async () => {
   assert.match(app, /copy-symbol/);
 });
 
-test("section marker has an isolated upper-left inclusion control", async () => {
+test("anchor editor has derived section-state and wrapping navigation controls", async () => {
   const app = await readFile(new URL("../app.js", import.meta.url), "utf8");
-  assert.match(app, /section-edge-controls/);
-  assert.match(app, /Include this Section Marker in printouts and Markdown exports\./);
-  assert.match(app, /setSectionIncluded\(curated, section\.id, checkbox\.checked\)/);
-  assert.match(app, /event\.stopPropagation\(\)/);
+  assert.match(app, /anchor-context-controls/);
+  assert.match(app, /Include previous section/);
+  assert.match(app, /Omit previous section/);
+  assert.match(app, /createTriangleIcon/);
+  assert.match(app, /iconButton\("<", "Previous anchor"/);
+  assert.match(app, /iconButton\(">", "Next anchor"/);
+  assert.match(app, /closeActiveEditorInPlace\(false\);[\s\S]*beginSectionEditing\(target/);
+  assert.doesNotMatch(app, /setSectionIncluded/);
+  assert.doesNotMatch(app, /Include this Section Marker/);
+});
+
+test("document header is a single compact editor with no anchor controls", async () => {
+  const app = await readFile(new URL("../app.js", import.meta.url), "utf8");
+  assert.match(app, /conversation\.append\(createDocumentHeaderElement\(\)\)/);
+  assert.match(app, /className = "document-header"/);
+  assert.match(app, /editor\.required = true/);
+  assert.match(app, /editingDocumentHeaderDraft = editor\.value/);
+  assert.match(app, /nextText \|\| original\.text/);
+  const headerFunction = app.slice(app.indexOf("function createDocumentHeaderElement"), app.indexOf("function createMessageElement"));
+  assert.doesNotMatch(headerFunction, /checkbox|navigateAnchor|moveSection|removeSection|editingControls/);
+  assert.equal((headerFunction.match(/document\.createElement\("h1"\)/g) || []).length, 1);
 });
 
 test("print CSS excludes omitted messages and interface controls", async () => {
@@ -233,7 +362,7 @@ test("save and print reveal the persistent Share-link reminder", async () => {
   assert.equal(occurrences.length, 3);
   assert.match(app, /"Markdown saved\."/);
   assert.match(app, /window\.print\(\);\s*showSafetyRecommendation\(\)/);
-  assert.doesNotMatch(app, /scrollIntoView/);
+  assert.doesNotMatch(app, /showSafetyRecommendation\(\)[\s\S]{0,80}scrollIntoView/);
 });
 
 test("Share-link reminder lives inside the sticky review block", async () => {

@@ -15,13 +15,16 @@ button { padding: .45rem .7rem; }
 .sticky-review { position: sticky; top: 0; z-index: 10; padding: .45rem .6rem; border: 1px solid #8885; background: Canvas; }
 .review-controls { display: flex; justify-content: space-between; align-items: center; gap: .75rem; }
 .action-buttons, .editing-controls { display: flex; flex-wrap: wrap; gap: .4rem; }
+.project-state { align-self: center; color: #666; font-size: .85rem; }
+.project-state.dirty { color: #a55b00; }
 .include-all-control { white-space: nowrap; }
 .transient-status { margin: .7rem 0; color: #666; }
 .safety-recommendation { display: flex; align-items: flex-start; gap: .75rem; margin: .45rem 0 0; padding: .55rem .65rem; border-left: 3px solid #F00; background: #8881; }
 .safety-recommendation span { flex: 1; }
 .dismiss-notice { padding: .05rem .3rem; border: 1px solid transparent; background: transparent; color: inherit; }
 .dismiss-notice:hover, .dismiss-notice:focus-visible { border-color: #8888; }
-#conversation > h1 { margin: 2.5rem 0 1.5rem; }
+.document-header { margin: 2.5rem 0 1.5rem; cursor: text; }
+.document-header-editor { box-sizing: border-box; width: 100%; padding: .2rem .35rem; font: inherit; font-weight: inherit; }
 
 article.message { position: relative; border-top: 1px solid #8886; padding: 3.15rem 0 3.1rem; }
 article.message > header { display: flex; align-items: center; gap: .7rem; margin-bottom: .85rem; }
@@ -49,16 +52,15 @@ article.message:hover .message-edge-controls, .message-edge-controls:focus-withi
 .section-heading { display: flex; align-items: center; gap: .7rem; }
 .section-marker h2 { margin: 0; font-size: 1.12rem; font-weight: 650; }
 .section-marker.editing { display: block; }
-.section-edge-controls { position: absolute; top: .65rem; left: 0; min-height: 1.7rem; opacity: .16; transition: opacity .12s; }
-.section-edge-controls input { width: 1rem; height: 1rem; margin: 0 .35rem; }
-.section-marker:hover .section-edge-controls, .section-edge-controls:focus-within { opacity: 1; }
 .section-marker.omitted .section-heading, .section-marker.omitted .section-editor { opacity: .56; }
-.section-marker.omitted .section-edge-controls { opacity: .07; }
-.section-marker.omitted:hover .section-edge-controls, .section-marker.omitted .section-edge-controls:focus-within { opacity: .92; }
-.section-marker.omitted:hover .section-edge-controls input, .section-marker.omitted .section-edge-controls input:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 .section-editor, .note-editor { box-sizing: border-box; display: block; width: 100%; margin-bottom: .55rem; padding: .5rem; font: inherit; }
 .editing-controls { justify-content: flex-end; }
 .editing-controls button { font-size: .78rem; padding: .3rem .55rem; }
+.anchor-editor-controls { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+.anchor-context-controls { display: flex; align-items: center; gap: .18rem; }
+.previous-zone-control svg { display: block; width: .9rem; height: .8rem; overflow: visible; }
+.triangle-outline { fill: none; stroke: currentColor; stroke-width: 1.35; stroke-linejoin: round; }
+.triangle-outline.triangle-filled, .triangle-mixed-fill { fill: currentColor; }
 
 .message-note { display: flex; align-items: flex-start; gap: .55rem; margin: 1.1rem 0 0 1rem; padding: .7rem .8rem; border-left: 3px solid #c7a52b; background: #c7a52b12; cursor: text; }
 .message-note p { flex: 1; margin: 0; white-space: pre-wrap; }
@@ -70,8 +72,6 @@ article.message:hover .message-edge-controls, .message-edge-controls:focus-withi
   .review-controls { flex-wrap: wrap; }
   .message-edge-controls { opacity: .5; }
   .omitted .message-edge-controls { opacity: .28; }
-  .section-edge-controls { opacity: .5; }
-  .section-marker.omitted .section-edge-controls { opacity: .28; }
   .message-note { margin-left: 0; }
 }
 
@@ -79,9 +79,9 @@ article.message:hover .message-edge-controls, .message-edge-controls:focus-withi
   :root { color-scheme: light; }
   body { color: #000; background: #fff; }
   main { max-width: none; margin: 0; padding: 0; }
-  .application-chrome, .no-print, .message-edge-controls, .section-edge-controls, .omitted, .editing-controls,
+  .application-chrome, .no-print, .message-edge-controls, .omitted, .editing-controls,
   .section-marker.editing, .message-note.editing { display: none !important; }
-  #conversation > h1 { margin-top: 0; }
+  .document-header { margin-top: 0; }
   article.message { opacity: 1; break-inside: auto; padding: 1rem 0 1.25rem; }
   article.message > header { break-after: avoid; }
   article.message h2 { color: #000; }

@@ -1,27 +1,33 @@
 import {
   addNote,
   addSection,
+  adjacentAnchorId,
+  anchorOutputState,
   canMoveSection,
   copyMarkdown,
-  createCuratedDocument,
   curatedStream,
   inclusionState,
   moveSection,
+  previousZoneState,
   removeNote,
   removeSection,
   safeFilename,
   setAllMessagesIncluded,
   setMessageIncluded,
-  setSectionIncluded,
   summarize,
+  togglePreviousZone,
   toMarkdown,
   updateNote,
   updateSection,
 } from "./document.mjs";
+import { bindingById, createProject, deriveProjectDisplayTitle, updateDocumentHeader } from "./project-model.mjs";
+import { createProjectSession, dirtyState, markEditorialChanged } from "./project-session.mjs";
+import { openProject, saveProject, saveProjectAs } from "./project-file.mjs";
 import { FileHandleStore } from "./save-location.mjs";
 import { saveMarkdown } from "./save-markdown.mjs";
 
 const form = document.querySelector("#import-form");
+const openButton = document.querySelector("#open-project");
 const status = document.querySelector("#status");
 const conversation = document.querySelector("#conversation");
 const summaryPanel = document.querySelector("#summary-panel");
@@ -29,12 +35,18 @@ const importSummary = document.querySelector("#import-summary");
 const validation = document.querySelector("#validation");
 const documentActions = document.querySelector("#document-actions");
 const includeAll = document.querySelector("#include-all");
+const projectState = document.querySelector("#project-state");
+const saveProjectButton = document.querySelector("#save-project");
+const saveProjectAsButton = document.querySelector("#save-project-as");
 const saveButton = document.querySelector("#save-markdown");
 const printButton = document.querySelector("#print-selected");
 const safetyRecommendation = document.querySelector("#safety-recommendation");
 const dismissSafetyRecommendation = document.querySelector("#dismiss-safety-recommendation");
 const handleStore = new FileHandleStore();
 let curated = null;
+let projectSession = null;
+let editingDocumentHeader = false;
+let editingDocumentHeaderDraft = null;
 let editingSectionId = null;
 let editingNoteMessageId = null;
 let editingOriginal = null;
@@ -42,7 +54,7 @@ let statusTimer = null;
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
-  resetViewer();
+  if (!confirmDiscardDirty()) return;
   showStatus("Importing...");
   try {
     const response = await fetch("/api/import", {
@@ -52,10 +64,12 @@ form.addEventListener("submit", async (event) => {
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "Import failed");
-    curated = createCuratedDocument(result.document);
+    curated = await createProject(result.document, { sourceUrl: result.source_url });
+    projectSession = createProjectSession(curated);
     renderSummary(result.document);
     renderCuratedDocument();
     updateGlobalInclusionControl();
+    updateProjectState();
     summaryPanel.hidden = false;
     documentActions.hidden = false;
     showStatus("Import complete.", true);
@@ -65,18 +79,47 @@ form.addEventListener("submit", async (event) => {
   }
 });
 
+openButton.addEventListener("click", async () => {
+  if (!confirmDiscardDirty()) return;
+  try {
+    const result = await openProject({ windowObject: window, documentObject: document });
+    if (result.method === "cancelled") return;
+    curated = result.project;
+    projectSession = createProjectSession(curated, {
+      persisted: true,
+      handle: result.handle,
+      archiveDigest: result.archiveDigest,
+    });
+    renderSummary(curated.transcript.document);
+    renderCuratedDocument();
+    updateGlobalInclusionControl();
+    updateProjectState();
+    summaryPanel.hidden = false;
+    documentActions.hidden = false;
+    showStatus("Project opened.", true);
+  } catch (error) {
+    showStatus(error instanceof Error ? error.message : "Could not open project.");
+  }
+});
+
 includeAll.addEventListener("change", () => {
   if (!curated) return;
   setAllMessagesIncluded(curated, includeAll.checked);
-  for (const article of conversation.querySelectorAll("article.message")) updateMessageAppearance(article, includeAll.checked);
+  markEditorialChanged(projectSession);
+  renderCuratedDocument();
   updateGlobalInclusionControl();
+  updateProjectState();
 });
+
+saveProjectButton.addEventListener("click", () => saveCurrentProject(false));
+saveProjectAsButton.addEventListener("click", () => saveCurrentProject(true));
 
 saveButton.addEventListener("click", async () => {
   if (!curated) return;
+  finishActiveEditing();
   const result = await saveMarkdown({
     markdown: toMarkdown(curated),
-    filename: safeFilename(curated.source.title),
+    filename: safeFilename(deriveProjectDisplayTitle(curated)),
     windowObject: window,
     documentObject: document,
     handleStore,
@@ -102,12 +145,15 @@ dismissSafetyRecommendation.addEventListener("click", () => {
 });
 
 document.addEventListener("pointerdown", (event) => {
-  const activeEditor = conversation.querySelector(".section-marker.editing, .message-note.editing");
+  const activeEditor = conversation.querySelector(".document-header.editing, .section-marker.editing, .message-note.editing");
   if (activeEditor && !activeEditor.contains(event.target)) closeActiveEditorInPlace(false);
 }, true);
 
 function resetViewer() {
   curated = null;
+  projectSession = null;
+  editingDocumentHeader = false;
+  editingDocumentHeaderDraft = null;
   editingSectionId = null;
   editingNoteMessageId = null;
   editingOriginal = null;
@@ -117,6 +163,32 @@ function resetViewer() {
   documentActions.hidden = true;
   safetyRecommendation.hidden = true;
   hideStatus();
+  updateProjectState();
+}
+
+async function saveCurrentProject(asNew) {
+  if (!projectSession) return;
+  finishActiveEditing();
+  updateProjectState();
+  try {
+    const result = await (asNew ? saveProjectAs : saveProject)(projectSession, {
+      windowObject: window,
+      documentObject: document,
+    });
+    if (result.method === "cancelled") {
+      showStatus("Project save cancelled.", true);
+      return;
+    }
+    curated = projectSession.project;
+    updateProjectState();
+    showStatus(result.method === "download" ? "Rend project download started." : "Project saved.", true);
+  } catch (error) {
+    showStatus(error instanceof Error ? error.message : "Could not save project.");
+  }
+}
+
+function confirmDiscardDirty() {
+  return !projectSession || !dirtyState(projectSession).any || window.confirm("Discard unsaved project changes?");
 }
 
 function showStatus(message, transient = false) {
@@ -163,20 +235,53 @@ function setSummaryValues(container, entries) {
 
 function renderCuratedDocument() {
   conversation.replaceChildren();
-  const heading = document.createElement("h1");
-  heading.textContent = curated.source.title;
-  conversation.append(heading);
+  conversation.append(createDocumentHeaderElement());
   for (const node of curatedStream(curated, { includeOmitted: true })) {
-    conversation.append(node.kind === "section" ? createSectionElement(node.section) : createMessageElement(node));
+    conversation.append(node.kind === "section" ? createSectionElement(node) : createMessageElement(node));
   }
   focusActiveEditor();
 }
 
+function createDocumentHeaderElement() {
+  const heading = document.createElement("h1");
+  heading.className = "document-header";
+  if (editingDocumentHeader) {
+    heading.classList.add("editing");
+    const editor = document.createElement("input");
+    editor.className = "document-header-editor";
+    editor.value = editingDocumentHeaderDraft ?? curated.editorial.documentHeader;
+    editor.maxLength = 240;
+    editor.required = true;
+    editor.setAttribute("aria-label", "Document header");
+    editor.addEventListener("input", () => { editingDocumentHeaderDraft = editor.value; });
+    editor.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        closeActiveEditorInPlace(true);
+      }
+    });
+
+    heading.append(editor);
+  } else {
+    heading.textContent = deriveProjectDisplayTitle(curated);
+    heading.tabIndex = 0;
+    heading.addEventListener("click", () => beginDocumentHeaderEditing(heading));
+    heading.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        beginDocumentHeaderEditing(heading);
+      }
+    });
+  }
+  return heading;
+}
+
 function createMessageElement(node) {
-  const { message, included, note } = node;
+  const { message, binding, included, note } = node;
   const article = document.createElement("article");
   article.className = "message";
-  article.dataset.messageId = message.id;
+  article.dataset.messageId = binding.id;
 
   const topControls = document.createElement("div");
   topControls.className = "message-edge-controls message-top-controls no-print";
@@ -194,9 +299,11 @@ function createMessageElement(node) {
   checkbox.title = "Include this message in printouts and Markdown exports.";
   checkbox.setAttribute("aria-label", checkbox.title);
   checkbox.addEventListener("change", () => {
-    setMessageIncluded(curated, message.id, checkbox.checked);
-    updateMessageAppearance(article, checkbox.checked);
+    setMessageIncluded(curated, binding.id, checkbox.checked);
+    markEditorialChanged(projectSession);
+    renderCuratedDocument();
     updateGlobalInclusionControl();
+    updateProjectState();
   });
 
   const copyButton = copyIconButton(async () => {
@@ -211,17 +318,17 @@ function createMessageElement(node) {
   });
   const sectionButton = iconButton("§", "Add section marker before this message", () => {
     finishActiveEditing();
-    const section = addSection(curated, message.id, "");
+    const section = addSection(curated, binding.id, "");
     editingSectionId = section.id;
-    editingOriginal = { kind: "section", id: section.id, text: "" };
+    editingOriginal = { kind: "section", id: section.id, text: "", isNew: true };
     renderCuratedDocument();
   });
   const noteButton = iconButton("📝", note ? "This message already has a note" : "Add note to this message", () => {
     if (note) return;
     finishActiveEditing();
-    addNote(curated, message.id, "");
-    editingNoteMessageId = message.id;
-    editingOriginal = { kind: "note", id: message.id, text: "" };
+    addNote(curated, binding.id, "");
+    editingNoteMessageId = binding.id;
+    editingOriginal = { kind: "note", id: binding.id, text: "", isNew: true };
     renderCuratedDocument();
   });
   noteButton.classList.add("add-note-control");
@@ -238,7 +345,7 @@ function createMessageElement(node) {
   source.textContent = message.markdown;
   article.append(topControls, header, source);
   for (const attachment of message.attachments) article.append(createAttachmentCard(attachment));
-  if (note) article.append(createNoteElement(note));
+  if (note) article.append(createNoteElement(note, binding.id));
   const bottomControls = document.createElement("div");
   bottomControls.className = "message-edge-controls message-bottom-controls no-print";
   bottomControls.append(copyButton, noteButton);
@@ -247,27 +354,13 @@ function createMessageElement(node) {
   return article;
 }
 
-function createSectionElement(section) {
+function createSectionElement(streamNode) {
+  const { section, included, anchorKind } = streamNode;
   const element = document.createElement("section");
   element.className = "section-marker";
-  element.classList.toggle("omitted", !section.included);
+  element.classList.toggle("omitted", !included);
   element.dataset.sectionId = section.id;
-  const topControls = document.createElement("div");
-  topControls.className = "section-edge-controls no-print";
-  const checkbox = document.createElement("input");
-  checkbox.type = "checkbox";
-  checkbox.checked = section.included;
-  checkbox.title = "Include this Section Marker in printouts and Markdown exports.";
-  checkbox.setAttribute("aria-label", checkbox.title);
-  checkbox.addEventListener("pointerdown", (event) => event.stopPropagation());
-  checkbox.addEventListener("click", (event) => event.stopPropagation());
-  checkbox.addEventListener("change", () => {
-    setSectionIncluded(curated, section.id, checkbox.checked);
-    element.classList.toggle("omitted", !checkbox.checked);
-    const badge = element.querySelector(".section-omitted-label");
-    if (badge) badge.hidden = checkbox.checked;
-  });
-  topControls.append(checkbox);
+  element.dataset.anchorKind = anchorKind;
   if (editingSectionId === section.id) {
     element.classList.add("editing");
     const editor = document.createElement("input");
@@ -284,19 +377,24 @@ function createSectionElement(section) {
         closeActiveEditorInPlace(true);
       }
     });
-    const controls = editingControls({
+    const rightControls = editingControls({
       canMoveUp: canMoveSection(curated, section.id, "up"),
       canMoveDown: canMoveSection(curated, section.id, "down"),
       moveUp: () => moveAndRenderSection(section.id, "up"),
       moveDown: () => moveAndRenderSection(section.id, "down"),
       remove: () => {
         removeSection(curated, section.id);
+        if (!editingOriginal?.isNew) markEditorialChanged(projectSession);
         editingSectionId = null;
         editingOriginal = null;
-        element.remove();
+        renderCuratedDocument();
+        updateProjectState();
       },
     });
-    element.append(topControls, editor, controls);
+    const editorControls = document.createElement("div");
+    editorControls.className = "anchor-editor-controls no-print";
+    editorControls.append(createAnchorContextControls(section.id), rightControls);
+    element.append(editor, editorControls);
   } else {
     const headingGroup = document.createElement("div");
     headingGroup.className = "section-heading";
@@ -305,7 +403,7 @@ function createSectionElement(section) {
     const omitted = document.createElement("span");
     omitted.className = "omitted-label section-omitted-label";
     omitted.textContent = "OMITTED";
-    omitted.hidden = section.included;
+    omitted.hidden = included;
     element.tabIndex = 0;
     element.addEventListener("click", () => beginSectionEditing(section, element));
     element.addEventListener("keydown", (event) => {
@@ -315,16 +413,65 @@ function createSectionElement(section) {
       }
     });
     headingGroup.append(heading, omitted);
-    element.append(topControls, headingGroup);
+    element.append(headingGroup);
   }
   return element;
 }
 
-function createNoteElement(note) {
+function sectionReviewNode(section) {
+  const output = anchorOutputState(curated, section.id);
+  return { kind: "section", section, included: output.included, anchorKind: output.kind };
+}
+
+function createAnchorContextControls(sectionId) {
+  const controls = document.createElement("div");
+  controls.className = "anchor-context-controls";
+  const zone = previousZoneState(curated, sectionId);
+  const zoneAction = zone.state === "omitted" ? "Include previous section" : "Omit previous section";
+  const zoneButton = iconButton("", zone.state === "unavailable" ? "No previous message section" : zoneAction, () => {
+    if (!togglePreviousZone(curated, sectionId)) return;
+    markEditorialChanged(projectSession);
+    updateGlobalInclusionControl();
+    updateProjectState();
+    renderCuratedDocument();
+  });
+  zoneButton.classList.add("previous-zone-control", `zone-${zone.state}`);
+  zoneButton.disabled = zone.state === "unavailable";
+  zoneButton.append(createTriangleIcon(zone.state));
+
+  const previousButton = iconButton("<", "Previous anchor", () => navigateAnchor(sectionId, "previous"));
+  const nextButton = iconButton(">", "Next anchor", () => navigateAnchor(sectionId, "next"));
+  const hasAdjacentAnchor = adjacentAnchorId(curated, sectionId, "previous") !== null;
+  previousButton.disabled = !hasAdjacentAnchor;
+  nextButton.disabled = !hasAdjacentAnchor;
+  controls.append(zoneButton, previousButton, nextButton);
+  return controls;
+}
+
+function createTriangleIcon(state) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 16 14");
+  svg.setAttribute("aria-hidden", "true");
+  const outline = document.createElementNS(svg.namespaceURI, "path");
+  outline.setAttribute("d", "M8 1 L15 13 H1 Z");
+  outline.classList.add("triangle-outline");
+  svg.append(outline);
+  if (state === "included") {
+    outline.classList.add("triangle-filled");
+  } else if (state === "mixed") {
+    const fill = document.createElementNS(svg.namespaceURI, "path");
+    fill.setAttribute("d", "M3.9 8 H12.1 L15 13 H1 Z");
+    fill.classList.add("triangle-mixed-fill");
+    svg.append(fill);
+  }
+  return svg;
+}
+
+function createNoteElement(note, bindingId) {
   const element = document.createElement("aside");
   element.className = "message-note";
-  element.dataset.noteFor = note.messageId;
-  if (editingNoteMessageId === note.messageId) {
+  element.dataset.noteFor = bindingId;
+  if (editingNoteMessageId === bindingId) {
     element.classList.add("editing");
     const editor = document.createElement("textarea");
     editor.className = "note-editor";
@@ -332,7 +479,7 @@ function createNoteElement(note) {
     editor.placeholder = "Note about this message";
     editor.rows = 3;
     editor.setAttribute("aria-label", "Note about this message");
-    editor.addEventListener("input", () => updateNote(curated, note.messageId, editor.value));
+    editor.addEventListener("input", () => updateNote(curated, bindingId, editor.value));
     editor.addEventListener("keydown", (event) => {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -342,10 +489,12 @@ function createNoteElement(note) {
     });
     const controls = editingControls({
       remove: () => {
-        removeNote(curated, note.messageId);
+        removeNote(curated, bindingId);
+        if (!editingOriginal?.isNew) markEditorialChanged(projectSession);
         editingNoteMessageId = null;
         editingOriginal = null;
         renderCuratedDocument();
+        updateProjectState();
       },
     });
     element.append(editor, controls);
@@ -353,11 +502,11 @@ function createNoteElement(note) {
     const text = document.createElement("p");
     text.textContent = note.text || "Empty note";
     element.tabIndex = 0;
-    element.addEventListener("click", () => beginNoteEditing(note, element));
+    element.addEventListener("click", () => beginNoteEditing(note, bindingId, element));
     element.addEventListener("keydown", (event) => {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
-        beginNoteEditing(note, element);
+        beginNoteEditing(note, bindingId, element);
       }
     });
     element.append(text);
@@ -384,54 +533,90 @@ function editingControls({ canMoveUp, canMoveDown, moveUp, moveDown, remove }) {
 
 function moveAndRenderSection(sectionId, direction) {
   moveSection(curated, sectionId, direction);
+  markEditorialChanged(projectSession);
+  updateProjectState();
   renderCuratedDocument();
+}
+
+function navigateAnchor(sectionId, direction) {
+  const targetId = adjacentAnchorId(curated, sectionId, direction);
+  if (!targetId) return;
+  closeActiveEditorInPlace(false);
+  const target = curated.editorial.nodes.find((node) => node.kind === "section" && node.id === targetId);
+  const targetElement = conversation.querySelector(`[data-section-id="${CSS.escape(targetId)}"]`);
+  if (!target || !targetElement) return;
+  beginSectionEditing(target, targetElement);
+  conversation.querySelector(`[data-section-id="${CSS.escape(targetId)}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function beginDocumentHeaderEditing(element) {
+  finishActiveEditing();
+  editingDocumentHeader = true;
+  editingDocumentHeaderDraft = curated.editorial.documentHeader;
+  editingOriginal = { kind: "document-header", text: curated.editorial.documentHeader };
+  element.replaceWith(createDocumentHeaderElement());
+  focusActiveEditor();
 }
 
 function beginSectionEditing(section, element) {
   finishActiveEditing();
   editingSectionId = section.id;
-  editingOriginal = { kind: "section", id: section.id, text: section.text };
-  element.replaceWith(createSectionElement(section));
+  editingOriginal = { kind: "section", id: section.id, text: section.text, isNew: false };
+  element.replaceWith(createSectionElement(sectionReviewNode(section)));
   focusActiveEditor();
 }
 
-function beginNoteEditing(note, element) {
+function beginNoteEditing(note, bindingId, element) {
   finishActiveEditing();
-  editingNoteMessageId = note.messageId;
-  editingOriginal = { kind: "note", id: note.messageId, text: note.text };
-  element.replaceWith(createNoteElement(note));
+  editingNoteMessageId = bindingId;
+  editingOriginal = { kind: "note", id: bindingId, text: note.text, isNew: false };
+  element.replaceWith(createNoteElement(note, bindingId));
   focusActiveEditor();
 }
 
 function closeActiveEditorInPlace(cancel) {
+  const wasEditingDocumentHeader = editingDocumentHeader;
+  const documentHeaderDraft = editingDocumentHeaderDraft;
   const sectionId = editingSectionId;
   const noteMessageId = editingNoteMessageId;
-  const activeElement = conversation.querySelector(".section-marker.editing, .message-note.editing");
-  if (cancel && editingOriginal?.kind === "section" && sectionId) updateSection(curated, sectionId, editingOriginal.text);
-  if (cancel && editingOriginal?.kind === "note" && noteMessageId) updateNote(curated, noteMessageId, editingOriginal.text);
+  const original = editingOriginal;
+  const activeElement = conversation.querySelector(".document-header.editing, .section-marker.editing, .message-note.editing");
+  if (cancel && original?.kind === "section" && sectionId) updateSection(curated, sectionId, original.text);
+  if (cancel && original?.kind === "note" && noteMessageId) updateNote(curated, noteMessageId, original.text);
+  editingDocumentHeader = false;
+  editingDocumentHeaderDraft = null;
   editingSectionId = null;
   editingNoteMessageId = null;
   editingOriginal = null;
 
+  if (wasEditingDocumentHeader) {
+    const nextText = cancel ? original.text : String(documentHeaderDraft ?? "").trim();
+    updateDocumentHeader(curated, nextText || original.text);
+    activeElement?.replaceWith(createDocumentHeaderElement());
+    if (!cancel && curated.editorial.documentHeader !== original?.text) markEditorialChanged(projectSession);
+  }
   if (sectionId) {
-    const section = curated.nodes.find((node) => node.kind === "section" && node.id === sectionId);
+    const section = curated.editorial.nodes.find((node) => node.kind === "section" && node.id === sectionId);
     if (section && !section.text.trim()) {
       removeSection(curated, sectionId);
       activeElement?.remove();
     } else if (section) {
-      activeElement?.replaceWith(createSectionElement(section));
+      activeElement?.replaceWith(createSectionElement(sectionReviewNode(section)));
+      if (!cancel && section.text !== original?.text) markEditorialChanged(projectSession);
     }
   }
   if (noteMessageId) {
-    const note = curated.notes.get(noteMessageId);
+    const note = bindingById(curated, noteMessageId).note;
     if (note && !note.text.trim()) {
       removeNote(curated, noteMessageId);
       enableNoteControl(activeElement?.closest("article.message"));
       activeElement?.remove();
     } else if (note) {
-      activeElement?.replaceWith(createNoteElement(note));
+      activeElement?.replaceWith(createNoteElement(note, noteMessageId));
+      if (!cancel && note.text !== original?.text) markEditorialChanged(projectSession);
     }
   }
+  updateProjectState();
 }
 
 function enableNoteControl(article) {
@@ -443,11 +628,12 @@ function enableNoteControl(article) {
 }
 
 function finishActiveEditing() {
-  if (editingSectionId || editingNoteMessageId) closeActiveEditorInPlace(false);
+  if (editingDocumentHeader || editingSectionId || editingNoteMessageId) closeActiveEditorInPlace(false);
 }
 
 function focusActiveEditor() {
-  const selector = editingSectionId ? `[data-section-id="${CSS.escape(editingSectionId)}"] .section-editor` :
+  const selector = editingDocumentHeader ? ".document-header-editor" :
+    editingSectionId ? `[data-section-id="${CSS.escape(editingSectionId)}"] .section-editor` :
     editingNoteMessageId ? `[data-note-for="${CSS.escape(editingNoteMessageId)}"] textarea` : null;
   if (selector) conversation.querySelector(selector)?.focus();
 }
@@ -464,6 +650,20 @@ function updateGlobalInclusionControl() {
   includeAll.indeterminate = state === "mixed";
   includeAll.checked = state === "all";
 }
+
+function updateProjectState() {
+  const state = projectSession ? dirtyState(projectSession) : { any: false };
+  projectState.textContent = projectSession ? (state.any ? "Unsaved changes" : "Saved") : "";
+  projectState.classList.toggle("dirty", state.any);
+  saveProjectButton.disabled = !projectSession || !state.any;
+  saveProjectAsButton.disabled = !projectSession;
+}
+
+window.addEventListener("beforeunload", (event) => {
+  if (!projectSession || !dirtyState(projectSession).any) return;
+  event.preventDefault();
+  event.returnValue = "";
+});
 
 function createAttachmentCard(attachment) {
   const card = document.createElement("div");

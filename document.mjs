@@ -1,94 +1,154 @@
-export function createCuratedDocument(documentModel) {
-  return {
-    source: documentModel,
-    included: new Map(documentModel.messages.map((message) => [message.id, true])),
-    nodes: documentModel.messages.map((message) => ({ kind: "message", messageId: message.id })),
-    notes: new Map(),
-    nextEditorialId: 1,
-  };
+import { bindingById, deriveProjectDisplayTitle, messageForBinding, portableFilename } from "./project-model.mjs";
+
+export function setMessageIncluded(project, bindingId, included) {
+  bindingById(project, bindingId).included = Boolean(included);
 }
 
-export function setMessageIncluded(curated, messageId, included) {
-  requireMessage(curated, messageId);
-  curated.included.set(messageId, Boolean(included));
+export function setAllMessagesIncluded(project, included) {
+  for (const binding of project.editorial.messageBindings) binding.included = Boolean(included);
 }
 
-export function setAllMessagesIncluded(curated, included) {
-  for (const messageId of curated.included.keys()) curated.included.set(messageId, Boolean(included));
-}
-
-export function inclusionState(curated) {
-  const values = Array.from(curated.included.values());
-  if (values.length === 0) return "none";
+export function inclusionState(project) {
+  const values = project.editorial.messageBindings.map((binding) => binding.included);
+  if (values.length === 0 || values.every((value) => !value)) return "none";
   if (values.every(Boolean)) return "all";
-  if (values.every((value) => !value)) return "none";
   return "mixed";
 }
 
-export function addSection(curated, beforeMessageId, text = "") {
-  requireMessage(curated, beforeMessageId);
-  const targetIndex = curated.nodes.findIndex((node) => node.kind === "message" && node.messageId === beforeMessageId);
-  const section = { kind: "section", id: nextId(curated), text: String(text), included: true };
-  curated.nodes.splice(targetIndex, 0, section);
+export function addSection(project, beforeBindingId, text = "") {
+  bindingById(project, beforeBindingId);
+  const targetIndex = project.editorial.nodes.findIndex((node) => node.kind === "message" && node.messageBindingId === beforeBindingId);
+  const section = { kind: "section", id: newId(), text: String(text) };
+  project.editorial.nodes.splice(targetIndex, 0, section);
   return section;
 }
 
-export function setSectionIncluded(curated, sectionId, included) {
-  findSection(curated, sectionId).included = Boolean(included);
+export function updateSection(project, sectionId, text) {
+  findSection(project, sectionId).text = String(text);
 }
 
-export function updateSection(curated, sectionId, text) {
-  findSection(curated, sectionId).text = String(text);
+export function removeSection(project, sectionId) {
+  project.editorial.nodes.splice(sectionIndex(project, sectionId), 1);
 }
 
-export function removeSection(curated, sectionId) {
-  const index = sectionIndex(curated, sectionId);
-  curated.nodes.splice(index, 1);
-}
-
-export function moveSection(curated, sectionId, direction) {
+export function moveSection(project, sectionId, direction) {
   if (!new Set(["up", "down"]).has(direction)) throw new Error(`Unknown direction: ${direction}`);
-  const index = sectionIndex(curated, sectionId);
-  const target = direction === "up" ? index - 1 : index + 1;
-  if (target < 0 || target >= curated.nodes.length) return false;
-  [curated.nodes[index], curated.nodes[target]] = [curated.nodes[target], curated.nodes[index]];
+  const index = sectionIndex(project, sectionId);
+  const nodes = project.editorial.nodes;
+  let target = -1;
+  if (direction === "up") {
+    for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+      if (nodes[cursor].kind === "message") { target = cursor; break; }
+    }
+  } else {
+    for (let cursor = index + 1; cursor < nodes.length; cursor += 1) {
+      if (nodes[cursor].kind === "message") { target = cursor; break; }
+    }
+  }
+  if (target < 0) return false;
+  const [section] = nodes.splice(index, 1);
+  nodes.splice(target, 0, section);
   return true;
 }
 
-export function canMoveSection(curated, sectionId, direction) {
-  const index = sectionIndex(curated, sectionId);
-  return direction === "up" ? index > 0 : index < curated.nodes.length - 1;
+export function canMoveSection(project, sectionId, direction) {
+  const index = sectionIndex(project, sectionId);
+  const nodes = project.editorial.nodes;
+  if (direction === "up") return nodes.slice(0, index).some((node) => node.kind === "message");
+  return nodes.slice(index + 1).some((node) => node.kind === "message");
 }
 
-export function addNote(curated, messageId, text = "") {
-  requireMessage(curated, messageId);
-  if (curated.notes.has(messageId)) throw new Error(`Message already has a note: ${messageId}`);
-  const note = { id: nextId(curated), messageId, text: String(text) };
-  curated.notes.set(messageId, note);
-  return note;
+export function anchorIds(project) {
+  return project.editorial.nodes.filter((node) => node.kind === "section").map((node) => node.id);
 }
 
-export function updateNote(curated, messageId, text) {
-  const note = curated.notes.get(messageId);
-  if (!note) throw new Error(`Message has no note: ${messageId}`);
-  note.text = String(text);
+export function adjacentAnchorId(project, sectionId, direction) {
+  const ids = anchorIds(project);
+  if (ids.length < 2) return null;
+  const index = ids.indexOf(sectionId);
+  if (index < 0) throw new Error(`Unknown section: ${sectionId}`);
+  const offset = direction === "previous" ? -1 : direction === "next" ? 1 : 0;
+  if (!offset) throw new Error(`Unknown anchor navigation direction: ${direction}`);
+  return ids[(index + offset + ids.length) % ids.length];
 }
 
-export function removeNote(curated, messageId) {
-  if (!curated.notes.delete(messageId)) throw new Error(`Message has no note: ${messageId}`);
+export function anchorOutputState(project, sectionId) {
+  const index = sectionIndex(project, sectionId);
+  const zone = [];
+  for (let cursor = index + 1; cursor < project.editorial.nodes.length; cursor += 1) {
+    const node = project.editorial.nodes[cursor];
+    if (node.kind === "section") break;
+    zone.push(bindingById(project, node.messageBindingId));
+  }
+  return {
+    kind: zone.length ? "bounding" : "island",
+    included: zone.length ? zone.some((binding) => binding.included) : true,
+    messageBindingIds: zone.map((binding) => binding.id),
+  };
 }
 
-export function curatedStream(curated, { includeOmitted = false } = {}) {
-  const messages = new Map(curated.source.messages.map((message) => [message.id, message]));
+export function previousZoneState(project, sectionId) {
+  const index = sectionIndex(project, sectionId);
+  const zone = [];
+  for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+    const node = project.editorial.nodes[cursor];
+    if (node.kind === "section") break;
+    zone.unshift(bindingById(project, node.messageBindingId));
+  }
+  if (!zone.length) return { state: "unavailable", messageBindingIds: [] };
+  const included = zone.map((binding) => binding.included);
+  return {
+    state: included.every(Boolean) ? "included" : included.every((value) => !value) ? "omitted" : "mixed",
+    messageBindingIds: zone.map((binding) => binding.id),
+  };
+}
+
+export function togglePreviousZone(project, sectionId) {
+  const zone = previousZoneState(project, sectionId);
+  if (zone.state === "unavailable") return false;
+  const included = zone.state === "omitted";
+  for (const bindingId of zone.messageBindingIds) setMessageIncluded(project, bindingId, included);
+  return true;
+}
+
+export function addNote(project, bindingId, text = "") {
+  const binding = bindingById(project, bindingId);
+  if (binding.note) throw new Error(`Message already has a note: ${bindingId}`);
+  binding.note = { id: newId(), text: String(text) };
+  return binding.note;
+}
+
+export function updateNote(project, bindingId, text) {
+  const binding = bindingById(project, bindingId);
+  if (!binding.note) throw new Error(`Message has no note: ${bindingId}`);
+  binding.note.text = String(text);
+}
+
+export function removeNote(project, bindingId) {
+  const binding = bindingById(project, bindingId);
+  if (!binding.note) throw new Error(`Message has no note: ${bindingId}`);
+  binding.note = null;
+}
+
+export function curatedStream(project, { includeOmitted = false } = {}) {
   const stream = [];
-  for (const node of curated.nodes) {
+  for (const node of project.editorial.nodes) {
     if (node.kind === "section") {
-      if (includeOmitted || node.included) stream.push({ kind: "section", section: node, included: node.included });
+      const output = anchorOutputState(project, node.id);
+      if (includeOmitted || output.included) stream.push({
+        kind: "section", section: node, included: output.included, anchorKind: output.kind,
+      });
       continue;
     }
-    const included = curated.included.get(node.messageId);
-    if (includeOmitted || included) {
-      stream.push({ kind: "message", message: messages.get(node.messageId), included, note: curated.notes.get(node.messageId) || null });
+    const binding = bindingById(project, node.messageBindingId);
+    if (includeOmitted || binding.included) {
+      stream.push({
+        kind: "message",
+        message: messageForBinding(project, binding),
+        binding,
+        included: binding.included,
+        note: binding.note,
+      });
     }
   }
   return stream;
@@ -126,9 +186,9 @@ export function copyMarkdown(message) {
   return message.markdown;
 }
 
-export function toMarkdown(curated) {
-  const sections = [`# ${singleLine(curated.source.title)}`];
-  for (const node of curatedStream(curated)) {
+export function toMarkdown(project) {
+  const sections = [`# ${singleLine(deriveProjectDisplayTitle(project))}`];
+  for (const node of curatedStream(project)) {
     if (node.kind === "section") {
       const text = node.section.text.trim();
       if (text) sections.push(`## ${singleLine(text)}`);
@@ -143,30 +203,22 @@ export function toMarkdown(curated) {
 }
 
 export function safeFilename(title) {
-  const cleaned = singleLine(title)
-    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/[. ]+$/g, "");
-  return `${cleaned || "conversation"}.md`;
+  return portableFilename(title, "conversation", ".md");
 }
 
-function requireMessage(curated, messageId) {
-  if (!curated.included.has(messageId)) throw new Error(`Unknown message: ${messageId}`);
+function newId() {
+  if (!globalThis.crypto?.randomUUID) throw new Error("Secure UUID generation is unavailable.");
+  return globalThis.crypto.randomUUID();
 }
 
-function nextId(curated) {
-  return `editorial-${curated.nextEditorialId++}`;
-}
-
-function sectionIndex(curated, sectionId) {
-  const index = curated.nodes.findIndex((node) => node.kind === "section" && node.id === sectionId);
+function sectionIndex(project, sectionId) {
+  const index = project.editorial.nodes.findIndex((node) => node.kind === "section" && node.id === sectionId);
   if (index < 0) throw new Error(`Unknown section: ${sectionId}`);
   return index;
 }
 
-function findSection(curated, sectionId) {
-  return curated.nodes[sectionIndex(curated, sectionId)];
+function findSection(project, sectionId) {
+  return project.editorial.nodes[sectionIndex(project, sectionId)];
 }
 
 function formatNote(text) {

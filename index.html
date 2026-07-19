@@ -13,6 +13,7 @@
         <div class="controls">
           <input id="share-url" name="url" type="url" required placeholder="https://chatgpt.com/share/...">
           <button type="submit">Import</button>
+          <button id="open-project" type="button">Open Project...</button>
         </div>
       </form>
       <p id="status" class="application-chrome transient-status" role="status" hidden></p>
@@ -35,6 +36,9 @@
             Include All Messages
           </label>
           <div class="action-buttons">
+            <span id="project-state" class="project-state" aria-live="polite"></span>
+            <button id="save-project" type="button" disabled>Save Project</button>
+            <button id="save-project-as" type="button" disabled>Save Project As...</button>
             <button id="save-markdown" type="button">Save Markdown As...</button>
             <button id="print-selected" type="button">Print Selected</button>
           </div>

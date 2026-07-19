@@ -117,7 +117,7 @@ Everything above this layer is ChatGPT-specific.
 
 Everything below this layer is ChatGPT-independent.
 
-Current document node types include:
+The normalized importer model contains User and Assistant messages. The separate browser-owned editorial model adds document nodes and annotations including:
 
 - User Message
 - Assistant Message
@@ -125,13 +125,15 @@ Current document node types include:
 
 Messages may contain user-authored annotations such as Notes.
 
+The editable document header is persistent editorial metadata, not a node in the ordered transcript/section-marker stream. Section-marker output inclusion is derived at projection time from the following message zone; island markers remain included and no marker inclusion state is persisted.
+
 Renderers, exporters, printers, and future navigation tools should depend only on this model.
 
 ---
 
 ## Rendering
 
-`app.js` renders the document model.
+`app.js` renders a Rend project composed of an immutable normalized transcript and separate editorial state.
 
 It has no knowledge of ChatGPT's serialization format.
 
@@ -142,6 +144,8 @@ Its responsibilities include:
 - annotations
 - Markdown export
 - printing
+
+Project persistence is divided between browser-side project/session modules and the local Python container boundary. `.rend` files are validated ZIP containers with separate manifest, transcript, and editorial JSON components. The persisted editorial component is a sparse overlay: untouched transcript messages inherit membership, inclusion, and order directly from the immutable transcript, while the document header, notes, omissions, section markers, and their actual positions are stored. The local server packs and unpacks container bytes but does not retain project data or filesystem paths.
 
 Rendering decisions should not require changes to the parser.
 

@@ -5,9 +5,11 @@ import {
   anchorOutputState,
   canMoveSection,
   copyMarkdown,
+  currentZoneState,
   curatedStream,
   inclusionState,
   moveSection,
+  outlineSections,
   previousZoneState,
   removeNote,
   removeSection,
@@ -15,6 +17,8 @@ import {
   setAllMessagesIncluded,
   setMessageIncluded,
   summarize,
+  toggleCurrentZone,
+  toggleOutlineSection,
   togglePreviousZone,
   toMarkdown,
   updateNote,
@@ -53,6 +57,8 @@ let editingDocumentHeaderDraft = null;
 let editingSectionId = null;
 let editingNoteMessageId = null;
 let editingOriginal = null;
+let viewMode = "transcript";
+let selectedSectionId = "document-header";
 let statusTimer = null;
 
 form.addEventListener("submit", async (event) => {
@@ -185,6 +191,8 @@ function activateWorkspace(project, session) {
   editingSectionId = null;
   editingNoteMessageId = null;
   editingOriginal = null;
+  viewMode = "transcript";
+  selectedSectionId = "document-header";
   renderSummary(project.transcript.document);
   renderCuratedDocument();
   updateGlobalInclusionControl();
@@ -259,10 +267,14 @@ function setSummaryValues(container, entries) {
 
 function renderCuratedDocument() {
   conversation.replaceChildren();
+  conversation.classList.toggle("outline-active", viewMode === "outline");
   conversation.append(createDocumentHeaderElement());
+  const transcript = document.createElement("div");
+  transcript.className = "transcript-presentation";
   for (const node of curatedStream(curated, { includeOmitted: true })) {
-    conversation.append(node.kind === "section" ? createSectionElement(node) : createMessageElement(node));
+    transcript.append(node.kind === "section" ? createSectionElement(node) : createMessageElement(node));
   }
+  conversation.append(transcript, createOutlinePresentation());
   focusActiveEditor();
 }
 
@@ -288,7 +300,9 @@ function createDocumentHeaderElement() {
 
     heading.append(editor);
   } else {
-    heading.textContent = deriveProjectDisplayTitle(curated);
+    const text = document.createElement("span");
+    text.className = "document-header-text";
+    text.textContent = deriveProjectDisplayTitle(curated);
     heading.tabIndex = 0;
     heading.addEventListener("click", () => beginDocumentHeaderEditing(heading));
     heading.addEventListener("keydown", (event) => {
@@ -297,8 +311,48 @@ function createDocumentHeaderElement() {
         beginDocumentHeaderEditing(heading);
       }
     });
+    heading.append(text);
   }
+  heading.append(createOutlineButton("document-header"));
   return heading;
+}
+
+function createOutlinePresentation() {
+  const outline = document.createElement("section");
+  outline.className = "outline-presentation";
+  outline.setAttribute("aria-label", "Document outline");
+  for (const section of outlineSections(curated)) outline.append(createOutlineRow(section));
+  return outline;
+}
+
+function createOutlineRow(section) {
+  const row = document.createElement("article");
+  row.className = "outline-row";
+  row.classList.toggle("selected", section.openerId === selectedSectionId);
+  row.classList.toggle("omitted", section.state === "omitted");
+  row.dataset.outlineSectionId = section.openerId;
+
+  const checkbox = document.createElement("input");
+  checkbox.type = "checkbox";
+  checkbox.checked = section.state !== "omitted";
+  checkbox.indeterminate = section.state === "mixed";
+  checkbox.disabled = !section.available;
+  checkbox.title = section.available ? sectionToggleAction(section.state) : "This section contains no messages";
+  checkbox.setAttribute("aria-label", checkbox.title);
+  checkbox.addEventListener("change", () => {
+    if (!toggleOutlineSection(curated, section.openerId)) return;
+    selectedSectionId = section.openerId;
+    markEditorialChanged(projectSession);
+    updateGlobalInclusionControl();
+    updateProjectState();
+    renderCuratedDocument();
+  });
+
+  const title = document.createElement("h2");
+  title.textContent = section.openerKind === "header" ? section.title : `§ ${section.title || "Untitled section"}`;
+  const returnButton = outlineIconButton("Return to this section in the transcript", () => returnToTranscript(section.openerId));
+  row.append(checkbox, returnButton, title);
+  return row;
 }
 
 function createMessageElement(node) {
@@ -450,32 +504,42 @@ function sectionReviewNode(section) {
 function createAnchorContextControls(sectionId) {
   const controls = document.createElement("div");
   controls.className = "anchor-context-controls";
-  const zone = previousZoneState(curated, sectionId);
-  const zoneAction = zone.state === "omitted" ? "Include previous section" : "Omit previous section";
-  const zoneButton = iconButton("", zone.state === "unavailable" ? "No previous message section" : zoneAction, () => {
+  const previousZone = previousZoneState(curated, sectionId);
+  const previousButton = iconButton("", previousZone.state === "unavailable" ? "No previous message section" : sectionToggleAction(previousZone.state, "previous"), () => {
     if (!togglePreviousZone(curated, sectionId)) return;
     markEditorialChanged(projectSession);
-    updateGlobalInclusionControl();
-    updateProjectState();
-    renderCuratedDocument();
+    refreshAfterInclusionChange();
   });
-  zoneButton.classList.add("previous-zone-control", `zone-${zone.state}`);
-  zoneButton.disabled = zone.state === "unavailable";
-  zoneButton.append(createTriangleIcon(zone.state));
+  previousButton.classList.add("previous-zone-control", `zone-${previousZone.state}`);
+  previousButton.disabled = previousZone.state === "unavailable";
+  previousButton.append(createTriangleIcon(previousZone.state, "up"));
 
-  const previousButton = iconButton("<", "Previous anchor", () => navigateAnchor(sectionId, "previous"));
-  const nextButton = iconButton(">", "Next anchor", () => navigateAnchor(sectionId, "next"));
+  const currentZone = currentZoneState(curated, sectionId);
+  const currentButton = iconButton("", currentZone.state === "unavailable" ? "This section contains no messages" : sectionToggleAction(currentZone.state, "current"), () => {
+    if (!toggleCurrentZone(curated, sectionId)) return;
+    markEditorialChanged(projectSession);
+    refreshAfterInclusionChange();
+  });
+  currentButton.classList.add("current-zone-control", `zone-${currentZone.state}`);
+  currentButton.disabled = currentZone.state === "unavailable";
+  currentButton.append(createTriangleIcon(currentZone.state, "down"));
+
+  const navigatePreviousButton = iconButton("<", "Previous anchor", () => navigateAnchor(sectionId, "previous"));
+  const navigateNextButton = iconButton(">", "Next anchor", () => navigateAnchor(sectionId, "next"));
+  navigatePreviousButton.classList.add("anchor-navigation-control");
+  navigateNextButton.classList.add("anchor-navigation-control");
   const hasAdjacentAnchor = adjacentAnchorId(curated, sectionId, "previous") !== null;
-  previousButton.disabled = !hasAdjacentAnchor;
-  nextButton.disabled = !hasAdjacentAnchor;
-  controls.append(zoneButton, previousButton, nextButton);
+  navigatePreviousButton.disabled = !hasAdjacentAnchor;
+  navigateNextButton.disabled = !hasAdjacentAnchor;
+  controls.append(previousButton, currentButton, createOutlineButton(sectionId), navigatePreviousButton, navigateNextButton);
   return controls;
 }
 
-function createTriangleIcon(state) {
+function createTriangleIcon(state, direction) {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("viewBox", "0 0 16 14");
   svg.setAttribute("aria-hidden", "true");
+  svg.classList.add(`triangle-${direction}`);
   const outline = document.createElementNS(svg.namespaceURI, "path");
   outline.setAttribute("d", "M8 1 L15 13 H1 Z");
   outline.classList.add("triangle-outline");
@@ -489,6 +553,53 @@ function createTriangleIcon(state) {
     svg.append(fill);
   }
   return svg;
+}
+
+function createOutlineButton(sectionId) {
+  return outlineIconButton("View sections in Outline View", (event) => {
+    event.stopPropagation();
+    enterOutline(sectionId);
+  });
+}
+
+function outlineIconButton(title, handler) {
+  const button = iconButton("", title, handler);
+  button.classList.add("outline-entry-control", "no-print");
+  button.addEventListener("pointerdown", (event) => event.stopPropagation());
+  const symbol = document.createElement("span");
+  symbol.className = "outline-symbol";
+  symbol.setAttribute("aria-hidden", "true");
+  button.append(symbol);
+  return button;
+}
+
+function sectionToggleAction(state, position = null) {
+  const action = state === "omitted" ? "Include" : "Omit";
+  return position ? `${action} ${position} section` : `${action} this section`;
+}
+
+function refreshAfterInclusionChange() {
+  updateGlobalInclusionControl();
+  updateProjectState();
+  renderCuratedDocument();
+}
+
+function enterOutline(sectionId) {
+  finishActiveEditing();
+  selectedSectionId = sectionId;
+  viewMode = "outline";
+  renderCuratedDocument();
+  conversation.querySelector(`[data-outline-section-id="${CSS.escape(sectionId)}"]`)?.scrollIntoView({ block: "center" });
+}
+
+function returnToTranscript(sectionId) {
+  selectedSectionId = sectionId;
+  viewMode = "transcript";
+  renderCuratedDocument();
+  const selector = sectionId === "document-header" ? ".document-header" : `[data-section-id="${CSS.escape(sectionId)}"]`;
+  const target = conversation.querySelector(selector);
+  target?.focus();
+  target?.scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
 function createNoteElement(note, bindingId) {

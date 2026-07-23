@@ -131,6 +131,8 @@ The editable document header is persistent editorial metadata, not a node in the
 
 The inclusion state of each section marker is not stored directly, but is derived from the state of the next adjacent message zone. Island markers remain included, and no marker inclusion state is persisted.
 
+Section projection begins with the implicit document-header boundary and creates another section at every explicit marker. The implicit boundary is never serialized. New imported projects do serialize one ordinary trailing end-of-document marker; strict prefix refreshes append messages after the prior boundary and add a new trailing marker. Outline View and the transcript consume the same derived section projection, so their tri-state controls cannot diverge.
+
 Renderers, exporters, printers, and future navigation tools should depend only on this model.
 
 ---
@@ -148,6 +150,8 @@ Its responsibilities include:
 - annotations
 - Markdown export
 - printing
+
+The transcript and outline are alternate screen presentations kept in the DOM together. Print-specific CSS always suppresses the outline and prints the curated transcript, regardless of the active screen view.
 
 Project persistence is divided between browser-side project/session modules and the local Python container boundary. 
 

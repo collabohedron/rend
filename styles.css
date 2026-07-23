@@ -15,6 +15,7 @@ button { padding: .45rem .7rem; }
 .sticky-review { position: sticky; top: 0; z-index: 10; padding: .45rem .6rem; border: 1px solid #8885; background: Canvas; }
 .review-controls { display: flex; justify-content: space-between; align-items: center; gap: .75rem; }
 .action-buttons, .editing-controls { display: flex; flex-wrap: wrap; gap: .4rem; }
+.action-buttons { margin-left: auto; }
 .project-state { align-self: center; color: #666; font-size: .85rem; }
 .project-state.dirty { color: #a55b00; }
 .include-all-control { white-space: nowrap; }
@@ -27,8 +28,26 @@ button { padding: .45rem .7rem; }
 .safety-recommendation span { flex: 1; }
 .dismiss-notice { padding: .05rem .3rem; border: 1px solid transparent; background: transparent; color: inherit; }
 .dismiss-notice:hover, .dismiss-notice:focus-visible { border-color: #8888; }
-.document-header { margin: 2.5rem 0 1.5rem; cursor: text; }
+.document-header { display: flex; align-items: center; gap: .6rem; margin: 2.5rem 0 1.5rem; cursor: text; }
+.document-header-text, .document-header-editor { min-width: 0; flex: 1; }
 .document-header-editor { box-sizing: border-box; width: 100%; padding: .2rem .35rem; font: inherit; font-weight: inherit; }
+.outline-entry-control { flex: none; opacity: 1; }
+.outline-symbol { display: inline-block; width: 1rem; height: .75rem; background:
+  radial-gradient(circle at .1rem .12rem, currentColor 0 .08rem, transparent .1rem),
+  radial-gradient(circle at .1rem .38rem, currentColor 0 .08rem, transparent .1rem),
+  radial-gradient(circle at .1rem .64rem, currentColor 0 .08rem, transparent .1rem),
+  linear-gradient(currentColor 0 0) .32rem .08rem / .68rem .08rem no-repeat,
+  linear-gradient(currentColor 0 0) .32rem .34rem / .68rem .08rem no-repeat,
+  linear-gradient(currentColor 0 0) .32rem .60rem / .68rem .08rem no-repeat; }
+
+.outline-presentation { display: none; border-top: 1px solid #8886; }
+.outline-active .transcript-presentation { display: none; }
+.outline-active .outline-presentation { display: block; }
+.outline-row { display: grid; grid-template-columns: auto auto minmax(0, 1fr); align-items: center; gap: .75rem; padding: .9rem .35rem; border-bottom: 1px solid #8884; }
+.outline-row h2 { margin: 0; font-size: 1rem; font-weight: 600; }
+.outline-row input { width: 1rem; height: 1rem; }
+.outline-row.omitted h2 { opacity: .56; }
+.outline-row.selected { background: #8882; outline: 1px solid #8885; outline-offset: -1px; }
 
 article.message { position: relative; border-top: 1px solid #8886; padding: 3.15rem 0 3.1rem; }
 article.message > header { display: flex; align-items: center; gap: .7rem; margin-bottom: .85rem; }
@@ -62,7 +81,9 @@ article.message:hover .message-edge-controls, .message-edge-controls:focus-withi
 .editing-controls button { font-size: .78rem; padding: .3rem .55rem; }
 .anchor-editor-controls { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
 .anchor-context-controls { display: flex; align-items: center; gap: .18rem; }
-.previous-zone-control svg { display: block; width: .9rem; height: .8rem; overflow: visible; }
+.anchor-navigation-control { position: relative; top: -2px; }
+.previous-zone-control svg, .current-zone-control svg { display: block; width: .9rem; height: .8rem; overflow: visible; }
+.triangle-down { transform: rotate(180deg); }
 .triangle-outline { fill: none; stroke: currentColor; stroke-width: 1.35; stroke-linejoin: round; }
 .triangle-outline.triangle-filled, .triangle-mixed-fill { fill: currentColor; }
 
@@ -85,6 +106,8 @@ article.message:hover .message-edge-controls, .message-edge-controls:focus-withi
   main { max-width: none; margin: 0; padding: 0; }
   .application-chrome, .no-print, .message-edge-controls, .omitted, .editing-controls,
   .section-marker.editing, .message-note.editing { display: none !important; }
+  .outline-presentation { display: none !important; }
+  .transcript-presentation { display: block !important; }
   .document-header { margin-top: 0; }
   article.message { opacity: 1; break-inside: auto; padding: 1rem 0 1.25rem; }
   article.message > header { break-after: avoid; }

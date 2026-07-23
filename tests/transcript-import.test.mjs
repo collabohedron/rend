@@ -98,6 +98,7 @@ test("an unchanged transcript and source URL do not create transcript dirtiness"
   assert.equal(result.comparison, "exact");
   assert.equal(result.transcriptChanged, false);
   assert.equal(project.transcript, before);
+  assert.equal(project.editorial.nodes.filter((node) => node.kind === "section" && node.text.startsWith("End of Document: ")).length, 1);
 });
 
 test("an exact ordered prefix extends the transcript and preserves existing editorial state", async () => {
@@ -124,6 +125,12 @@ test("an exact ordered prefix extends the transcript and preserves existing edit
   assert.equal(project.editorial.messageBindings[0].included, false);
   assert.equal(project.editorial.messageBindings[1].note.text, "Existing note");
   assert.ok(project.editorial.nodes.some((node) => node.id === section.id));
+  const endAnchors = project.editorial.nodes.filter((node) => node.kind === "section" && node.text.startsWith("End of Document: "));
+  assert.equal(endAnchors.length, 2);
+  const oldEndIndex = project.editorial.nodes.indexOf(endAnchors[0]);
+  const firstAppendedIndex = project.editorial.nodes.findIndex((node) => node.kind === "message" && node.messageBindingId === project.editorial.messageBindings[2].id);
+  assert.ok(oldEndIndex < firstAppendedIndex);
+  assert.equal(project.editorial.nodes.at(-1), endAnchors[1]);
   assert.deepEqual(project.editorial.messageBindings.slice(2).map((binding) => ({
     sourceMessageId: binding.sourceMessageId, included: binding.included, note: binding.note,
   })), [

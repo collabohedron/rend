@@ -73,17 +73,11 @@ export function adjacentAnchorId(project, sectionId, direction) {
 }
 
 export function anchorOutputState(project, sectionId) {
-  const index = sectionIndex(project, sectionId);
-  const zone = [];
-  for (let cursor = index + 1; cursor < project.editorial.nodes.length; cursor += 1) {
-    const node = project.editorial.nodes[cursor];
-    if (node.kind === "section") break;
-    zone.push(bindingById(project, node.messageBindingId));
-  }
+  const zone = currentZoneState(project, sectionId);
   return {
-    kind: zone.length ? "bounding" : "island",
-    included: zone.length ? zone.some((binding) => binding.included) : true,
-    messageBindingIds: zone.map((binding) => binding.id),
+    kind: zone.messageBindingIds.length ? "bounding" : "island",
+    included: zone.state === "unavailable" || zone.state !== "omitted",
+    messageBindingIds: zone.messageBindingIds,
   };
 }
 
@@ -95,20 +89,54 @@ export function previousZoneState(project, sectionId) {
     if (node.kind === "section") break;
     zone.unshift(bindingById(project, node.messageBindingId));
   }
-  if (!zone.length) return { state: "unavailable", messageBindingIds: [] };
-  const included = zone.map((binding) => binding.included);
-  return {
-    state: included.every(Boolean) ? "included" : included.every((value) => !value) ? "omitted" : "mixed",
-    messageBindingIds: zone.map((binding) => binding.id),
-  };
+  return messageZoneState(zone);
+}
+
+export function currentZoneState(project, sectionId) {
+  const index = sectionIndex(project, sectionId);
+  const zone = [];
+  for (let cursor = index + 1; cursor < project.editorial.nodes.length; cursor += 1) {
+    const node = project.editorial.nodes[cursor];
+    if (node.kind === "section") break;
+    zone.push(bindingById(project, node.messageBindingId));
+  }
+  return messageZoneState(zone);
 }
 
 export function togglePreviousZone(project, sectionId) {
-  const zone = previousZoneState(project, sectionId);
-  if (zone.state === "unavailable") return false;
-  const included = zone.state === "omitted";
-  for (const bindingId of zone.messageBindingIds) setMessageIncluded(project, bindingId, included);
-  return true;
+  return toggleMessageZone(project, previousZoneState(project, sectionId));
+}
+
+export function toggleCurrentZone(project, sectionId) {
+  return toggleMessageZone(project, currentZoneState(project, sectionId));
+}
+
+export function outlineSections(project) {
+  const sections = [{ openerKind: "header", openerId: "document-header", title: deriveProjectDisplayTitle(project), messageBindingIds: [] }];
+  for (const node of project.editorial.nodes) {
+    if (node.kind === "section") {
+      sections.push({ openerKind: "anchor", openerId: node.id, title: node.text, messageBindingIds: [] });
+    } else {
+      sections.at(-1).messageBindingIds.push(node.messageBindingId);
+    }
+  }
+  return sections.map((section) => {
+    const zone = messageZoneState(section.messageBindingIds.map((id) => bindingById(project, id)));
+    return {
+      ...section,
+      state: zone.state === "unavailable" ? "included" : zone.state,
+      available: zone.state !== "unavailable",
+    };
+  });
+}
+
+export function toggleOutlineSection(project, openerId) {
+  const section = outlineSections(project).find((item) => item.openerId === openerId);
+  if (!section) throw new Error(`Unknown outline section: ${openerId}`);
+  return toggleMessageZone(project, {
+    state: section.available ? section.state : "unavailable",
+    messageBindingIds: section.messageBindingIds,
+  });
 }
 
 export function addNote(project, bindingId, text = "") {
@@ -219,6 +247,22 @@ function sectionIndex(project, sectionId) {
 
 function findSection(project, sectionId) {
   return project.editorial.nodes[sectionIndex(project, sectionId)];
+}
+
+function messageZoneState(bindings) {
+  if (!bindings.length) return { state: "unavailable", messageBindingIds: [] };
+  const included = bindings.map((binding) => binding.included);
+  return {
+    state: included.every(Boolean) ? "included" : included.every((value) => !value) ? "omitted" : "mixed",
+    messageBindingIds: bindings.map((binding) => binding.id),
+  };
+}
+
+function toggleMessageZone(project, zone) {
+  if (zone.state === "unavailable") return false;
+  const included = zone.state === "omitted";
+  for (const bindingId of zone.messageBindingIds) setMessageIncluded(project, bindingId, included);
+  return true;
 }
 
 function formatNote(text) {

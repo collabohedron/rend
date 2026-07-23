@@ -26,6 +26,7 @@ Once imported, Rend creates an editable local project. You can search it with no
 - Include or omit individual messages from exported output
 - Add section markers to structure the transcript
 - Include or omit marked sections with a single click
+- Switch contextually between the full transcript and a section Outline View
 - Add editorial notes for later review
 - Edit the document header independently from the imported conversation title
 - Copy individual messages as Markdown
@@ -65,8 +66,9 @@ Select **Import**.
 After importing a conversation you can:
 
 - Review the transcript as one continuous document.
-- Include or omit individual messages and whole preceding message sections.
+- Include or omit individual messages or whole sections from either adjacent anchor.
 - Add section markers to structure the transcript.
+- Use an anchor's outline icon—or the document header's icon when no anchors remain—to review every section without message bodies.
 - Add editorial notes for later review.
 - Copy individual messages as Markdown.
 - Save the editable workspace with **Save Project** or **Save Project As...**.
@@ -74,6 +76,8 @@ After importing a conversation you can:
 - Print only the selected content with **Print Selected**.
 
 The large document header is editable independently from the imported conversation title and supplies export filenames. The document header, section markers, and notes are editorial annotations stored separately from the immutable imported transcript. Section markers automatically appear in output whenever the section they introduce contains included content. Markers that do not introduce a section always appear.
+
+New imports receive an ordinary trailing marker named `End of Document: <timestamp>`. When a later Share import strictly extends the existing transcript, Rend preserves the prior marker before the appended messages and creates a new trailing marker. Outline View is a screen-only navigation and curation presentation; **Print Selected** always prints the curated full transcript.
 
 ## Rend projects and output
 

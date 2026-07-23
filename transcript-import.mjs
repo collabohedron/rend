@@ -1,4 +1,4 @@
-import { createProject, validateImportedDocument, validateProject } from "./project-model.mjs";
+import { createProject, endOfDocumentAnchorText, validateImportedDocument, validateProject } from "./project-model.mjs";
 
 export async function retrieveShareTranscript(url, fetchObject = globalThis.fetch) {
   const response = await fetchObject("/api/import", {
@@ -101,6 +101,9 @@ function refreshCompatibleTranscript(project, document, provenance, dependencies
     };
     proposed.editorial.messageBindings.push(binding);
     proposed.editorial.nodes.push({ kind: "message", messageBindingId: binding.id });
+  }
+  if (document.messages.length > priorMessageCount) {
+    proposed.editorial.nodes.push({ kind: "section", id: uuid(), text: endOfDocumentAnchorText(importedAt) });
   }
   validateProject(proposed);
 

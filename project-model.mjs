@@ -4,8 +4,13 @@ export function createProject(documentModel, provenance = {}, dependencies = {})
   const document = clone(documentModel);
   validateImportedDocument(document);
   const timestamp = now();
+  const projectId = uuid();
+  const editorial = emptyEditorialOverlay(document.title);
+  editorial.sections.push({
+    id: uuid(), text: endOfDocumentAnchorText(timestamp), beforeMessageIndex: document.messages.length,
+  });
   const project = {
-    id: uuid(),
+    id: projectId,
     createdAt: timestamp,
     savedAt: null,
     saveGeneration: 0,
@@ -20,7 +25,7 @@ export function createProject(documentModel, provenance = {}, dependencies = {})
       },
       document: deepFreeze(document),
     },
-    editorial: createRuntimeEditorial(document, emptyEditorialOverlay(document.title), uuid),
+    editorial: createRuntimeEditorial(document, editorial, uuid),
   };
   validateProject(project);
   return project;
@@ -101,6 +106,10 @@ export function updateDocumentHeader(project, text) {
 
 export function projectFilename(project) {
   return portableFilename(deriveProjectDisplayTitle(project), "Rend project", ".rend");
+}
+
+export function endOfDocumentAnchorText(timestamp) {
+  return `End of Document: ${timestamp}`;
 }
 
 export function portableFilename(title, fallback, extension) {

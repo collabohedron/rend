@@ -37,7 +37,12 @@ test("new projects keep the normalized transcript immutable and persist no defau
   assert.equal(project.editorial.messageBindings.length, 2);
   assert.deepEqual(project.editorial.messageBindings.map((binding) => binding.included), [true, true]);
   assert.deepEqual(serializeEditorialOverlay(project), {
-    schema: "rend-editorial", schemaVersion: 1, documentHeader: "Imported title", messageEdits: [], sections: [],
+    schema: "rend-editorial", schemaVersion: 1, documentHeader: "Imported title", messageEdits: [],
+    sections: [{
+      id: project.editorial.nodes.at(-1).id,
+      text: "End of Document: 2026-07-18T00:00:00.000Z",
+      beforeMessageIndex: 2,
+    }],
   });
   setMessageIncluded(project, project.editorial.messageBindings[0].id, false);
   addNote(project, project.editorial.messageBindings[0].id, "A note");
@@ -50,6 +55,15 @@ test("new projects keep the normalized transcript immutable and persist no defau
   removeNote(project, project.editorial.messageBindings[0].id);
   assert.deepEqual(serializeEditorialOverlay(project).messageEdits, []);
   assert.equal(project.transcript.document.messages[0].markdown, "Hello");
+});
+
+test("new projects receive one ordinary trailing end-of-document anchor", () => {
+  const project = createProject(documentModel, {}, dependencies());
+  const sections = project.editorial.nodes.filter((node) => node.kind === "section");
+  assert.equal(sections.length, 1);
+  assert.equal(sections[0].text, "End of Document: 2026-07-18T00:00:00.000Z");
+  assert.equal(project.editorial.nodes.at(-1), sections[0]);
+  assert.deepEqual(anchorOutputState(project, sections[0].id), { kind: "island", included: true, messageBindingIds: [] });
 });
 
 test("the document header is initialized independently from the immutable imported title", async () => {
@@ -100,7 +114,7 @@ test("container components round-trip into a validated project", async () => {
     editorial: serializeEditorialOverlay(project),
   });
   assert.equal(validateProject(loaded), loaded);
-  assert.equal(loaded.editorial.nodes.length, 3);
+  assert.equal(loaded.editorial.nodes.length, 4);
   assert.equal(loaded.editorial.messageBindings[0].included, false);
   assert.equal(loaded.editorial.messageBindings[0].note.text, "Persisted note");
   assert.equal(loaded.editorial.documentHeader, "Persisted header");
@@ -116,7 +130,10 @@ test("section positions round-trip without serializing transcript message order"
   const section = addSection(project, secondBinding, "Boundary");
   moveSection(project, section.id, "down");
   const overlay = serializeEditorialOverlay(project);
-  assert.deepEqual(overlay.sections, [{ id: section.id, text: "Boundary", beforeMessageIndex: 2 }]);
+  assert.deepEqual(overlay.sections, [
+    { id: section.id, text: "Boundary", beforeMessageIndex: 2 },
+    { id: project.editorial.nodes.at(-1).id, text: "End of Document: 2026-07-18T00:00:00.000Z", beforeMessageIndex: 2 },
+  ]);
   assert.equal("nodes" in overlay, false);
   assert.equal("messageBindings" in overlay, false);
   const loaded = projectFromContainer({
@@ -127,7 +144,7 @@ test("section positions round-trip without serializing transcript message order"
     transcript: project.transcript,
     editorial: overlay,
   });
-  assert.deepEqual(curatedStream(loaded, { includeOmitted: true }).map((node) => node.kind), ["message", "message", "section"]);
+  assert.deepEqual(curatedStream(loaded, { includeOmitted: true }).map((node) => node.kind), ["message", "message", "section", "section"]);
 });
 
 test("sparse overlay validation rejects redundant default state", () => {

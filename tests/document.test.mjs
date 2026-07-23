@@ -9,10 +9,12 @@ import {
   anchorOutputState,
   canMoveSection,
   copyMarkdown,
+  currentZoneState,
   curatedStream,
   inclusionState,
   messageMarkdown,
   moveSection,
+  outlineSections,
   previousZoneState,
   removeNote,
   removeSection,
@@ -21,6 +23,8 @@ import {
   setMessageIncluded,
   summarize,
   togglePreviousZone,
+  toggleCurrentZone,
+  toggleOutlineSection,
   toMarkdown,
   updateNote,
   updateSection,
@@ -51,6 +55,10 @@ async function makeProject() {
 
 function bindingId(project, sourceId) {
   return project.editorial.messageBindings.find((binding) => binding.sourceMessageId === sourceId).id;
+}
+
+function automaticEndAnchor(project) {
+  return project.editorial.nodes.find((node) => node.kind === "section" && node.text.startsWith("End of Document: "));
 }
 
 test("all messages are included by default and global state is tri-state", async () => {
@@ -168,8 +176,59 @@ test("previous-section control is unavailable without an immediately preceding m
   assert.equal(anchorOutputState(curated, first.id).included, true);
 });
 
+test("current-section controls share exact boundaries with the outline projection", async () => {
+  const curated = await makeProject();
+  const section = addSection(curated, bindingId(curated, "assistant-1"), "Second section");
+  const outline = outlineSections(curated);
+  assert.deepEqual(outline.map((item) => ({
+    openerKind: item.openerKind, openerId: item.openerId, state: item.state,
+    available: item.available, messageBindingIds: item.messageBindingIds,
+  })), [
+    { openerKind: "header", openerId: "document-header", state: "included", available: true, messageBindingIds: [bindingId(curated, "user-1")] },
+    { openerKind: "anchor", openerId: section.id, state: "included", available: true, messageBindingIds: [bindingId(curated, "assistant-1"), bindingId(curated, "user-2")] },
+    { openerKind: "anchor", openerId: automaticEndAnchor(curated).id, state: "included", available: false, messageBindingIds: [] },
+  ]);
+  setMessageIncluded(curated, bindingId(curated, "assistant-1"), false);
+  assert.equal(currentZoneState(curated, section.id).state, "mixed");
+  assert.equal(toggleCurrentZone(curated, section.id), true);
+  assert.equal(currentZoneState(curated, section.id).state, "omitted");
+  toggleCurrentZone(curated, section.id);
+  assert.equal(currentZoneState(curated, section.id).state, "included");
+});
+
+test("deleting every explicit anchor leaves one header-opened outline section", async () => {
+  const curated = await makeProject();
+  removeSection(curated, automaticEndAnchor(curated).id);
+  const outline = outlineSections(curated);
+  assert.equal(outline.length, 1);
+  assert.equal(outline[0].openerId, "document-header");
+  assert.deepEqual(outline[0].messageBindingIds, curated.editorial.messageBindings.map((binding) => binding.id));
+});
+
+test("the header section toggles messages without ever omitting the document header", async () => {
+  const curated = await makeProject();
+  const section = addSection(curated, bindingId(curated, "assistant-1"), "Second section");
+  assert.equal(toggleOutlineSection(curated, "document-header"), true);
+  assert.equal(bindingId(curated, "user-1") != null, true);
+  assert.equal(curated.editorial.messageBindings.find((binding) => binding.id === bindingId(curated, "user-1")).included, false);
+  const markdown = toMarkdown(curated);
+  assert.ok(markdown.startsWith("# Curated Fixture"));
+  assert.ok(!markdown.includes("# Existing heading"));
+  assert.ok(markdown.includes(`## ${section.text}`));
+});
+
+test("an anchor inserted into an omitted message zone derives omitted output", async () => {
+  const curated = await makeProject();
+  setMessageIncluded(curated, bindingId(curated, "assistant-1"), false);
+  setMessageIncluded(curated, bindingId(curated, "user-2"), false);
+  const section = addSection(curated, bindingId(curated, "assistant-1"), "Omitted split");
+  assert.deepEqual(anchorOutputState(curated, section.id).included, false);
+  assert.ok(!toMarkdown(curated).includes("Omitted split"));
+});
+
 test("anchor navigation wraps through island and bounding anchors", async () => {
   const curated = await makeProject();
+  removeSection(curated, automaticEndAnchor(curated).id);
   const first = addSection(curated, bindingId(curated, "assistant-1"), "Island");
   assert.equal(adjacentAnchorId(curated, first.id, "next"), null);
   const second = addSection(curated, bindingId(curated, "assistant-1"), "Bounding");
@@ -181,6 +240,7 @@ test("anchor navigation wraps through island and bounding anchors", async () => 
 
 test("section markers move without changing imported message order", async () => {
   const curated = await makeProject();
+  removeSection(curated, automaticEndAnchor(curated).id);
   const section = addSection(curated, bindingId(curated, "assistant-1"), "Movable");
   assert.equal(canMoveSection(curated, section.id, "up"), true);
   moveSection(curated, section.id, "up");
@@ -228,7 +288,7 @@ test("document header edits affect Markdown and filenames without joining the an
   addSection(curated, bindingId(curated, "user-1"), "Leading anchor");
   assert.ok(toMarkdown(curated).startsWith("# Edited document\n\n## Leading anchor"));
   assert.equal(safeFilename(curated.editorial.documentHeader), "Edited document.md");
-  assert.equal(curatedStream(curated, { includeOmitted: true }).filter((node) => node.kind === "section").length, 1);
+  assert.equal(curatedStream(curated, { includeOmitted: true }).filter((node) => node.kind === "section").length, 2);
 });
 
 test("save/open preserves sparse state and reproduces identical derived output", async () => {
@@ -314,8 +374,9 @@ test("message controls occupy four semantic edge regions", async () => {
 test("anchor editor has derived section-state and wrapping navigation controls", async () => {
   const app = await readFile(new URL("../app.js", import.meta.url), "utf8");
   assert.match(app, /anchor-context-controls/);
-  assert.match(app, /Include previous section/);
-  assert.match(app, /Omit previous section/);
+  assert.match(app, /sectionToggleAction\(previousZone\.state, "previous"\)/);
+  assert.match(app, /sectionToggleAction\(currentZone\.state, "current"\)/);
+  assert.match(app, /toggleCurrentZone/);
   assert.match(app, /createTriangleIcon/);
   assert.match(app, /iconButton\("<", "Previous anchor"/);
   assert.match(app, /iconButton\(">", "Next anchor"/);
@@ -331,15 +392,35 @@ test("document header is a single compact editor with no anchor controls", async
   assert.match(app, /editor\.required = true/);
   assert.match(app, /editingDocumentHeaderDraft = editor\.value/);
   assert.match(app, /nextText \|\| original\.text/);
-  const headerFunction = app.slice(app.indexOf("function createDocumentHeaderElement"), app.indexOf("function createMessageElement"));
+  const headerFunction = app.slice(app.indexOf("function createDocumentHeaderElement"), app.indexOf("function createOutlinePresentation"));
   assert.doesNotMatch(headerFunction, /checkbox|navigateAnchor|moveSection|removeSection|editingControls/);
+  assert.match(headerFunction, /createOutlineButton\("document-header"\)/);
   assert.equal((headerFunction.match(/document\.createElement\("h1"\)/g) || []).length, 1);
+});
+
+test("Outline View is contextual, tri-state, and preserves reciprocal section navigation", async () => {
+  const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
+  const app = await readFile(new URL("../app.js", import.meta.url), "utf8");
+  assert.match(html, /id="include-all"[\s\S]*Include All Messages/);
+  assert.match(app, /setAllMessagesIncluded\(curated, includeAll\.checked\)/);
+  assert.match(app, /includeAll\.indeterminate = state === "mixed"/);
+  assert.match(app, /outlineSections\(curated\)/);
+  assert.match(app, /checkbox\.indeterminate = section\.state === "mixed"/);
+  assert.match(app, /createOutlineButton\(sectionId\)/);
+  assert.match(app, /createOutlineButton\("document-header"\)/);
+  assert.match(app, /selectedSectionId = sectionId;[\s\S]*viewMode = "outline"/);
+  assert.match(app, /selectedSectionId = sectionId;[\s\S]*viewMode = "transcript"/);
+  assert.match(app, /Return to this section in the transcript/);
+  assert.match(app, /const returnButton = outlineIconButton/);
+  assert.match(app, /row\.append\(checkbox, returnButton, title\)/);
 });
 
 test("print CSS excludes omitted messages and interface controls", async () => {
   const css = await readFile(new URL("../styles.css", import.meta.url), "utf8");
   assert.match(css, /@media print/);
   assert.match(css, /\.application-chrome[\s\S]*\.omitted[\s\S]*display: none !important/);
+  assert.match(css, /\.outline-presentation \{ display: none !important; \}/);
+  assert.match(css, /\.transcript-presentation \{ display: block !important; \}/);
 });
 
 test("pre-import chrome is hidden and review controls become sticky after import", async () => {

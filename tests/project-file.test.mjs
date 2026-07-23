@@ -66,7 +66,12 @@ test("project packing sends only the sparse editorial overlay", async () => {
     now: () => "2026-07-18T01:00:00.000Z",
   });
   assert.deepEqual(request.editorial, {
-    schema: "rend-editorial", schemaVersion: 1, documentHeader: "File fixture", messageEdits: [], sections: [],
+    schema: "rend-editorial", schemaVersion: 1, documentHeader: "File fixture", messageEdits: [],
+    sections: [{
+      id: "00000000-0000-4000-8000-000000000002",
+      text: "End of Document: 2026-07-18T00:00:00.000Z",
+      beforeMessageIndex: 1,
+    }],
   });
 });
 

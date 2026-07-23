@@ -36,7 +36,9 @@ test("new projects keep the normalized transcript immutable and persist no defau
   assert.ok(Object.isFrozen(project.transcript.document.messages[0]));
   assert.equal(project.editorial.messageBindings.length, 2);
   assert.deepEqual(project.editorial.messageBindings.map((binding) => binding.included), [true, true]);
-  assert.deepEqual(serializeEditorialOverlay(project), {
+  const initialOverlay = serializeEditorialOverlay(project);
+  assert.equal("analytics" in initialOverlay, false);
+  assert.deepEqual(initialOverlay, {
     schema: "rend-editorial", schemaVersion: 1, documentHeader: "Imported title", messageEdits: [],
     sections: [{
       id: project.editorial.nodes.at(-1).id,

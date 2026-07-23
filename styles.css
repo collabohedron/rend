@@ -43,10 +43,20 @@ button { padding: .45rem .7rem; }
 .outline-presentation { display: none; border-top: 1px solid #8886; }
 .outline-active .transcript-presentation { display: none; }
 .outline-active .outline-presentation { display: block; }
-.outline-row { display: grid; grid-template-columns: auto auto minmax(0, 1fr); align-items: center; gap: .75rem; padding: .9rem .35rem; border-bottom: 1px solid #8884; }
+.outline-row { display: grid; grid-template-columns: auto auto auto minmax(0, 1fr); align-items: start; gap: .75rem; padding: .9rem .35rem; border-bottom: 1px solid #8884; cursor: pointer; }
 .outline-row h2 { margin: 0; font-size: 1rem; font-weight: 600; }
-.outline-row input { width: 1rem; height: 1rem; }
-.outline-row.omitted h2 { opacity: .56; }
+.outline-row > input { width: 1rem; height: 1rem; margin-top: .35rem; }
+.outline-row-content { min-width: 0; }
+.outline-analytics { margin-top: .2rem; color: #777; font-size: .82rem; }
+.outline-analytics p { margin: .08rem 0; }
+.outline-annotation-toggle { margin: .08rem 0 0; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-decoration: underline; text-underline-offset: .16rem; cursor: pointer; }
+.outline-annotation-toggle:hover, .outline-annotation-toggle:focus-visible { color: CanvasText; }
+.outline-annotations { margin: .55rem 0 .1rem; padding-left: 1.2rem; }
+.outline-annotations li + li { margin-top: .4rem; }
+.outline-annotation-link { width: 100%; padding: .45rem .55rem; border: 1px solid #8885; background: #c7a52b0d; color: inherit; text-align: left; white-space: pre-wrap; overflow-wrap: anywhere; }
+.outline-annotation-link:hover, .outline-annotation-link:focus-visible { border-color: #888a; background: #c7a52b18; }
+.outline-annotation-source { display: block; margin-top: .2rem; color: #777; font-size: .75rem; }
+.outline-row.omitted h2, .outline-row.omitted .outline-analytics { opacity: .56; }
 .outline-row.selected { background: #8882; outline: 1px solid #8885; outline-offset: -1px; }
 
 article.message { position: relative; border-top: 1px solid #8886; padding: 3.15rem 0 3.1rem; }
@@ -63,6 +73,9 @@ article.message:hover .message-edge-controls, .message-edge-controls:focus-withi
 .copy-symbol::before, .copy-symbol::after { content: ""; position: absolute; width: .55rem; height: .55rem; border: 1.4px solid currentColor; border-radius: .16rem; }
 .copy-symbol::before { left: .05rem; top: .22rem; }
 .copy-symbol::after { left: .25rem; top: .02rem; background: Canvas; }
+.copy-feedback { display: inline-block; min-width: .85rem; font-size: 1rem; font-weight: 900; line-height: .85rem; text-align: center; }
+.copy-success { color: #198a35; }
+.copy-failure { color: #c62828; }
 .markdown-source { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
 .attachment { border: 1px solid #8888; padding: .7rem; margin-top: .7rem; }
 .omitted > header h2, .omitted > .markdown-source, .omitted > .attachment, .omitted > .message-note { opacity: .56; }
@@ -74,7 +87,6 @@ article.message:hover .message-edge-controls, .message-edge-controls:focus-withi
 .section-marker { position: relative; display: block; margin: 0; padding: 2.75rem 0 1.15rem; border-top: 1px solid #8886; cursor: text; }
 .section-heading { display: flex; align-items: center; gap: .7rem; }
 .section-marker h2 { margin: 0; font-size: 1.12rem; font-weight: 650; }
-.section-marker.editing { display: block; }
 .section-marker.omitted .section-heading, .section-marker.omitted .section-editor { opacity: .56; }
 .section-editor, .note-editor { box-sizing: border-box; display: block; width: 100%; margin-bottom: .55rem; padding: .5rem; font: inherit; }
 .editing-controls { justify-content: flex-end; }

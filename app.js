@@ -7,9 +7,11 @@ import {
   copyMarkdown,
   currentZoneState,
   curatedStream,
+  documentSections,
   inclusionState,
   moveSection,
   outlineSections,
+  outlineTimestampParts,
   previousZoneState,
   removeNote,
   removeSection,
@@ -41,6 +43,8 @@ const importSummary = document.querySelector("#import-summary");
 const validation = document.querySelector("#validation");
 const documentActions = document.querySelector("#document-actions");
 const includeAll = document.querySelector("#include-all");
+const copyDocumentButton = document.querySelector("#copy-document");
+const switchViewsButton = document.querySelector("#switch-views");
 const projectState = document.querySelector("#project-state");
 const saveProjectButton = document.querySelector("#save-project");
 const saveProjectAsButton = document.querySelector("#save-project-as");
@@ -58,8 +62,14 @@ let editingSectionId = null;
 let editingNoteMessageId = null;
 let editingOriginal = null;
 let viewMode = "transcript";
-let selectedSectionId = "document-header";
+let currentSectionId = "document-header";
+let expandedOutlineSections = new Set();
 let statusTimer = null;
+let transcriptScrollFrame = null;
+const copyFeedbackTimers = new WeakMap();
+
+configureCopyControl(copyDocumentButton, "Copy Document", () => toMarkdown(curated));
+configureOutlineIconButton(switchViewsButton, "Switch Views", toggleViews);
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -159,6 +169,9 @@ document.addEventListener("pointerdown", (event) => {
   const activeEditor = conversation.querySelector(".document-header.editing, .section-marker.editing, .message-note.editing");
   if (activeEditor && !activeEditor.contains(event.target)) closeActiveEditorInPlace(false);
 }, true);
+document.addEventListener("keydown", handleTranscriptNavigation);
+window.addEventListener("scroll", scheduleCurrentSectionUpdate, { passive: true });
+window.addEventListener("resize", scheduleCurrentSectionUpdate);
 
 async function saveCurrentProject(asNew) {
   if (!projectSession) return false;
@@ -184,15 +197,13 @@ async function saveCurrentProject(asNew) {
 }
 
 function activateWorkspace(project, session) {
+  const workspaceChanged = curated !== project || projectSession !== session;
   curated = project;
   projectSession = session;
-  editingDocumentHeader = false;
-  editingDocumentHeaderDraft = null;
-  editingSectionId = null;
-  editingNoteMessageId = null;
-  editingOriginal = null;
+  clearEditingState();
   viewMode = "transcript";
-  selectedSectionId = "document-header";
+  currentSectionId = "document-header";
+  if (workspaceChanged) expandedOutlineSections = new Set();
   renderSummary(project.transcript.document);
   renderCuratedDocument();
   updateGlobalInclusionControl();
@@ -274,13 +285,16 @@ function renderCuratedDocument() {
   for (const node of curatedStream(curated, { includeOmitted: true })) {
     transcript.append(node.kind === "section" ? createSectionElement(node) : createMessageElement(node));
   }
-  conversation.append(transcript, createOutlinePresentation());
+  conversation.append(transcript);
+  if (viewMode === "outline") conversation.append(createOutlinePresentation());
   focusActiveEditor();
+  if (viewMode === "transcript") scheduleCurrentSectionUpdate();
 }
 
 function createDocumentHeaderElement() {
   const heading = document.createElement("h1");
   heading.className = "document-header";
+  heading.dataset.sectionId = "document-header";
   if (editingDocumentHeader) {
     heading.classList.add("editing");
     const editor = document.createElement("input");
@@ -328,9 +342,14 @@ function createOutlinePresentation() {
 function createOutlineRow(section) {
   const row = document.createElement("article");
   row.className = "outline-row";
-  row.classList.toggle("selected", section.openerId === selectedSectionId);
+  row.classList.toggle("selected", section.openerId === currentSectionId);
   row.classList.toggle("omitted", section.state === "omitted");
   row.dataset.outlineSectionId = section.openerId;
+  if (section.openerId === currentSectionId) row.setAttribute("aria-current", "true");
+  row.addEventListener("click", (event) => {
+    if (event.target.closest("button, input, a, textarea, select")) return;
+    selectOutlineRow(row, section.openerId);
+  });
 
   const checkbox = document.createElement("input");
   checkbox.type = "checkbox";
@@ -341,18 +360,113 @@ function createOutlineRow(section) {
   checkbox.setAttribute("aria-label", checkbox.title);
   checkbox.addEventListener("change", () => {
     if (!toggleOutlineSection(curated, section.openerId)) return;
-    selectedSectionId = section.openerId;
+    currentSectionId = section.openerId;
     markEditorialChanged(projectSession);
     updateGlobalInclusionControl();
     updateProjectState();
     renderCuratedDocument();
   });
 
+  const content = document.createElement("div");
+  content.className = "outline-row-content";
   const title = document.createElement("h2");
   title.textContent = section.openerKind === "header" ? section.title : `§ ${section.title || "Untitled section"}`;
-  const returnButton = outlineIconButton("Return to this section in the transcript", () => returnToTranscript(section.openerId));
-  row.append(checkbox, returnButton, title);
+  content.append(title);
+  if (section.messageBindingIds.length > 0) content.append(createOutlineAnalytics(section));
+  if (section.analytics.annotationCount > 0 && expandedOutlineSections.has(section.openerId)) {
+    content.append(createOutlineAnnotations(section));
+  }
+  const copySectionButton = createCopyControl("Copy Section", () => {
+    selectOutlineRow(row, section.openerId);
+    return toMarkdown(curated, { sectionId: section.openerId });
+  });
+  const returnButton = outlineIconButton("Switch Views", () => returnToTranscript(section.openerId));
+  row.append(checkbox, copySectionButton, returnButton, content);
   return row;
+}
+
+function selectOutlineRow(row, sectionId) {
+  currentSectionId = sectionId;
+  const previous = conversation.querySelector(".outline-row.selected");
+  previous?.classList.remove("selected");
+  previous?.removeAttribute("aria-current");
+  row.classList.add("selected");
+  row.setAttribute("aria-current", "true");
+}
+
+function createOutlineAnalytics(section) {
+  const analytics = document.createElement("div");
+  analytics.className = "outline-analytics";
+  const counts = document.createElement("p");
+  const user = document.createElement("strong");
+  user.textContent = "User";
+  const assistant = document.createElement("strong");
+  assistant.textContent = "Assistant";
+  counts.append(
+    `${formatCount(section.analytics.messageCount, "message")}. `,
+    user,
+    ` ${formatCount(section.analytics.userWordCount, "word")} • `,
+    assistant,
+    ` ${formatCount(section.analytics.assistantWordCount, "word")}`,
+  );
+  analytics.append(counts);
+
+  const timestamp = outlineTimestampParts(section.analytics);
+  if (timestamp) {
+    const time = document.createElement("p");
+    const spanLabel = document.createElement("strong");
+    spanLabel.textContent = "Span";
+    time.append(spanLabel, ` ${timestamp.range}`);
+    if (timestamp.duration) {
+      const durationLabel = document.createElement("strong");
+      durationLabel.textContent = "Duration";
+      time.append(" • ", durationLabel, ` ${timestamp.duration}`);
+    }
+    analytics.append(time);
+  }
+
+  if (section.analytics.annotationCount > 0) {
+    const expanded = expandedOutlineSections.has(section.openerId);
+    const disclosure = document.createElement("button");
+    disclosure.type = "button";
+    disclosure.className = "outline-annotation-toggle";
+    disclosure.textContent = formatCount(section.analytics.annotationCount, "annotation");
+    disclosure.setAttribute("aria-expanded", String(expanded));
+    disclosure.title = expanded ? "Hide annotations" : "Show annotations";
+    disclosure.addEventListener("click", () => {
+      if (expanded) expandedOutlineSections.delete(section.openerId);
+      else expandedOutlineSections.add(section.openerId);
+      renderCuratedDocument();
+    });
+    analytics.append(disclosure);
+  }
+  return analytics;
+}
+
+function createOutlineAnnotations(section) {
+  const list = document.createElement("ul");
+  list.className = "outline-annotations";
+  for (const annotation of section.analytics.annotations) {
+    const item = document.createElement("li");
+    const link = document.createElement("button");
+    link.type = "button";
+    link.className = "outline-annotation-link";
+    link.title = "View source message in Transcript View";
+    const text = document.createElement("span");
+    text.textContent = annotation.note.text;
+    const source = document.createElement("span");
+    source.className = "outline-annotation-source";
+    source.textContent = "View source message";
+    link.append(text, source);
+    link.addEventListener("click", () => returnToMessage(section.openerId, annotation.bindingId));
+    item.append(link);
+    list.append(item);
+  }
+  return list;
+}
+
+function formatCount(value, noun) {
+  return `${value.toLocaleString()} ${noun}${value === 1 ? "" : "s"}`;
 }
 
 function createMessageElement(node) {
@@ -360,6 +474,7 @@ function createMessageElement(node) {
   const article = document.createElement("article");
   article.className = "message";
   article.dataset.messageId = binding.id;
+  article.tabIndex = -1;
 
   const topControls = document.createElement("div");
   topControls.className = "message-edge-controls message-top-controls no-print";
@@ -384,16 +499,7 @@ function createMessageElement(node) {
     updateProjectState();
   });
 
-  const copyButton = copyIconButton(async () => {
-    try {
-      await navigator.clipboard.writeText(copyMarkdown(message));
-      copyButton.textContent = "✓";
-      copyButton.title = "Copied";
-      window.setTimeout(() => restoreCopyButton(copyButton), 1200);
-    } catch {
-      showStatus("Unable to copy this message.", true);
-    }
-  });
+  const copyButton = createCopyControl("Copy Message", () => copyMarkdown(message));
   const sectionButton = iconButton("§", "Add section marker before this message", () => {
     finishActiveEditing();
     const section = addSection(curated, binding.id, "");
@@ -433,12 +539,11 @@ function createMessageElement(node) {
 }
 
 function createSectionElement(streamNode) {
-  const { section, included, anchorKind } = streamNode;
+  const { section, included } = streamNode;
   const element = document.createElement("section");
   element.className = "section-marker";
   element.classList.toggle("omitted", !included);
   element.dataset.sectionId = section.id;
-  element.dataset.anchorKind = anchorKind;
   if (editingSectionId === section.id) {
     element.classList.add("editing");
     const editor = document.createElement("input");
@@ -479,7 +584,7 @@ function createSectionElement(streamNode) {
     const heading = document.createElement("h2");
     heading.textContent = `§ ${section.text || "Untitled section"}`;
     const omitted = document.createElement("span");
-    omitted.className = "omitted-label section-omitted-label";
+    omitted.className = "omitted-label";
     omitted.textContent = "OMITTED";
     omitted.hidden = included;
     element.tabIndex = 0;
@@ -498,7 +603,7 @@ function createSectionElement(streamNode) {
 
 function sectionReviewNode(section) {
   const output = anchorOutputState(curated, section.id);
-  return { kind: "section", section, included: output.included, anchorKind: output.kind };
+  return { kind: "section", section, included: output.included };
 }
 
 function createAnchorContextControls(sectionId) {
@@ -510,7 +615,7 @@ function createAnchorContextControls(sectionId) {
     markEditorialChanged(projectSession);
     refreshAfterInclusionChange();
   });
-  previousButton.classList.add("previous-zone-control", `zone-${previousZone.state}`);
+  previousButton.classList.add("previous-zone-control");
   previousButton.disabled = previousZone.state === "unavailable";
   previousButton.append(createTriangleIcon(previousZone.state, "up"));
 
@@ -520,7 +625,7 @@ function createAnchorContextControls(sectionId) {
     markEditorialChanged(projectSession);
     refreshAfterInclusionChange();
   });
-  currentButton.classList.add("current-zone-control", `zone-${currentZone.state}`);
+  currentButton.classList.add("current-zone-control");
   currentButton.disabled = currentZone.state === "unavailable";
   currentButton.append(createTriangleIcon(currentZone.state, "down"));
 
@@ -556,14 +661,24 @@ function createTriangleIcon(state, direction) {
 }
 
 function createOutlineButton(sectionId) {
-  return outlineIconButton("View sections in Outline View", (event) => {
-    event.stopPropagation();
-    enterOutline(sectionId);
-  });
+  return outlineIconButton("Switch Views", () => switchViewsAt(sectionId));
 }
 
 function outlineIconButton(title, handler) {
-  const button = iconButton("", title, handler);
+  const button = document.createElement("button");
+  button.type = "button";
+  return configureOutlineIconButton(button, title, handler);
+}
+
+function configureOutlineIconButton(button, title, handler) {
+  button.replaceChildren();
+  button.classList.add("icon-button");
+  button.title = title;
+  button.setAttribute("aria-label", title);
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    handler(event);
+  });
   button.classList.add("outline-entry-control", "no-print");
   button.addEventListener("pointerdown", (event) => event.stopPropagation());
   const symbol = document.createElement("span");
@@ -584,22 +699,172 @@ function refreshAfterInclusionChange() {
   renderCuratedDocument();
 }
 
-function enterOutline(sectionId) {
+function toggleViews() {
+  if (!curated) return;
+  if (viewMode === "transcript") syncCurrentSectionFromViewport();
+  switchViewsAt(currentSectionId);
+}
+
+function switchViewsAt(sectionId) {
+  if (viewMode === "outline") returnToTranscript(sectionId);
+  else enterOutline(sectionId);
+}
+
+function enterOutline(sectionId = currentSectionId) {
   finishActiveEditing();
-  selectedSectionId = sectionId;
+  currentSectionId = sectionId;
   viewMode = "outline";
   renderCuratedDocument();
   conversation.querySelector(`[data-outline-section-id="${CSS.escape(sectionId)}"]`)?.scrollIntoView({ block: "center" });
 }
 
 function returnToTranscript(sectionId) {
-  selectedSectionId = sectionId;
+  currentSectionId = sectionId;
   viewMode = "transcript";
   renderCuratedDocument();
-  const selector = sectionId === "document-header" ? ".document-header" : `[data-section-id="${CSS.escape(sectionId)}"]`;
-  const target = conversation.querySelector(selector);
-  target?.focus();
+  scrollTranscriptTarget(transcriptSectionElement(sectionId), 0);
+}
+
+function returnToMessage(sectionId, bindingId) {
+  currentSectionId = sectionId;
+  viewMode = "transcript";
+  renderCuratedDocument();
+  const message = conversation.querySelector(`[data-message-id="${CSS.escape(bindingId)}"]`);
+  const target = message?.querySelector(".message-note") || message;
+  target?.focus({ preventScroll: true });
   target?.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function scheduleCurrentSectionUpdate() {
+  if (transcriptScrollFrame !== null) return;
+  transcriptScrollFrame = window.requestAnimationFrame(() => {
+    transcriptScrollFrame = null;
+    syncCurrentSectionFromViewport();
+  });
+}
+
+function syncCurrentSectionFromViewport() {
+  if (!curated || viewMode !== "transcript") return currentSectionId;
+  const visibleTop = transcriptVisibleTop();
+  let current = "document-header";
+  const anchors = conversation.querySelectorAll(".document-header, .transcript-presentation .section-marker");
+  for (const anchor of anchors) {
+    if (anchor.getBoundingClientRect().top > visibleTop + 1) break;
+    current = anchor.dataset.sectionId || "document-header";
+  }
+  currentSectionId = current;
+  return current;
+}
+
+function transcriptVisibleTop() {
+  if (documentActions.hidden) return 0;
+  const sticky = documentActions.getBoundingClientRect();
+  return Math.max(0, sticky.height);
+}
+
+function scrollTranscriptTarget(target, gap = 12) {
+  if (!target) return;
+  const top = window.scrollY + target.getBoundingClientRect().top - transcriptVisibleTop() + gap;
+  window.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
+}
+
+function handleTranscriptNavigation(event) {
+  if (!curated || event.defaultPrevented) return;
+  const navigation = transcriptNavigationShortcut(event);
+  const editingTranscriptText = isTranscriptTextEditor(event.target);
+  const allowedEditorShortcut = editingTranscriptText && navigation;
+  if (isTextEntryTarget(event.target) && !allowedEditorShortcut) return;
+  if (event.key === "\\" && !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey) {
+    event.preventDefault();
+    toggleViews();
+    return;
+  }
+  if (viewMode !== "transcript" || !navigation) return;
+  event.preventDefault();
+  const direction = event.key === "ArrowUp" ? "previous" : "next";
+  if (navigation === "message") navigateTranscriptMessage(direction);
+  else navigateTranscriptSection(direction);
+}
+
+function transcriptNavigationShortcut(event) {
+  if ((event.key !== "ArrowUp" && event.key !== "ArrowDown") || event.altKey || event.metaKey) return null;
+  if (event.shiftKey && !event.ctrlKey) return "message";
+  if (event.ctrlKey && !event.shiftKey) return "section";
+  return null;
+}
+
+function isTranscriptTextEditor(target) {
+  return target instanceof Element && Boolean(target.closest(".document-header-editor, .section-editor, .note-editor"));
+}
+
+function isTextEntryTarget(target) {
+  return target instanceof Element && Boolean(target.closest("input, textarea, select, [contenteditable='true']"));
+}
+
+function navigateTranscriptMessage(direction) {
+  const messages = [...conversation.querySelectorAll(".transcript-presentation article.message")];
+  if (!messages.length) return;
+  const visibleTop = transcriptVisibleTop();
+  const containingIndex = messages.findIndex((message) => {
+    const bounds = message.getBoundingClientRect();
+    return bounds.top <= visibleTop + 1 && bounds.bottom > visibleTop + 1;
+  });
+  let targetIndex = -1;
+  if (containingIndex >= 0) {
+    targetIndex = containingIndex + (direction === "previous" ? -1 : 1);
+  } else if (direction === "next") {
+    targetIndex = messages.findIndex((message) => message.getBoundingClientRect().top > visibleTop);
+  } else {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      if (messages[index].getBoundingClientRect().bottom <= visibleTop + 1) {
+        targetIndex = index;
+        break;
+      }
+    }
+  }
+  const target = messages[targetIndex];
+  if (!target) return;
+  finishActiveEditing();
+  currentSectionId = sectionForMessageBinding(target.dataset.messageId);
+  scrollTranscriptTarget(target);
+}
+
+function navigateTranscriptSection(direction) {
+  const activeTitleEditor = conversation.querySelector(".document-header-editor, .section-editor");
+  if (activeTitleEditor) {
+    currentSectionId = activeTitleEditor.closest("[data-section-id]")?.dataset.sectionId || currentSectionId;
+  } else {
+    syncCurrentSectionFromViewport();
+  }
+  const sectionIds = documentSections(curated).map((section) => section.openerId);
+  const currentIndex = sectionIds.indexOf(currentSectionId);
+  const targetIndex = currentIndex + (direction === "previous" ? -1 : 1);
+  if (currentIndex < 0 || targetIndex < 0 || targetIndex >= sectionIds.length) return;
+  currentSectionId = sectionIds[targetIndex];
+  activateTranscriptSection(currentSectionId);
+}
+
+function sectionForMessageBinding(bindingId) {
+  return documentSections(curated).find((section) => section.messageBindingIds.includes(bindingId))?.openerId || "document-header";
+}
+
+function transcriptSectionElement(sectionId) {
+  return sectionId === "document-header"
+    ? conversation.querySelector(".document-header")
+    : conversation.querySelector(`[data-section-id="${CSS.escape(sectionId)}"]`);
+}
+
+function activateTranscriptSection(sectionId) {
+  const target = transcriptSectionElement(sectionId);
+  if (!target) return;
+  if (sectionId === "document-header") {
+    beginDocumentHeaderEditing(target);
+  } else {
+    const section = curated.editorial.nodes.find((node) => node.kind === "section" && node.id === sectionId);
+    if (!section) return;
+    beginSectionEditing(section, target);
+  }
+  scrollTranscriptTarget(transcriptSectionElement(sectionId), 0);
 }
 
 function createNoteElement(note, bindingId) {
@@ -680,8 +945,9 @@ function navigateAnchor(sectionId, direction) {
   const target = curated.editorial.nodes.find((node) => node.kind === "section" && node.id === targetId);
   const targetElement = conversation.querySelector(`[data-section-id="${CSS.escape(targetId)}"]`);
   if (!target || !targetElement) return;
+  currentSectionId = targetId;
   beginSectionEditing(target, targetElement);
-  conversation.querySelector(`[data-section-id="${CSS.escape(targetId)}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  scrollTranscriptTarget(conversation.querySelector(`[data-section-id="${CSS.escape(targetId)}"]`), 0);
 }
 
 function beginDocumentHeaderEditing(element) {
@@ -718,11 +984,7 @@ function closeActiveEditorInPlace(cancel) {
   const activeElement = conversation.querySelector(".document-header.editing, .section-marker.editing, .message-note.editing");
   if (cancel && original?.kind === "section" && sectionId) updateSection(curated, sectionId, original.text);
   if (cancel && original?.kind === "note" && noteMessageId) updateNote(curated, noteMessageId, original.text);
-  editingDocumentHeader = false;
-  editingDocumentHeaderDraft = null;
-  editingSectionId = null;
-  editingNoteMessageId = null;
-  editingOriginal = null;
+  clearEditingState();
 
   if (wasEditingDocumentHeader) {
     const nextText = cancel ? original.text : String(documentHeaderDraft ?? "").trim();
@@ -764,6 +1026,14 @@ function enableNoteControl(article) {
 
 function finishActiveEditing() {
   if (editingDocumentHeader || editingSectionId || editingNoteMessageId) closeActiveEditorInPlace(false);
+}
+
+function clearEditingState() {
+  editingDocumentHeader = false;
+  editingDocumentHeaderDraft = null;
+  editingSectionId = null;
+  editingNoteMessageId = null;
+  editingOriginal = null;
 }
 
 function focusActiveEditor() {
@@ -816,22 +1086,52 @@ function iconButton(icon, title, handler) {
   return button;
 }
 
-function copyIconButton(handler) {
-  const button = iconButton("", "Copy message Markdown", handler);
-  const symbol = document.createElement("span");
-  symbol.className = "copy-symbol";
-  symbol.setAttribute("aria-hidden", "true");
-  button.append(symbol);
+function createCopyControl(title, markdownProvider) {
+  const button = document.createElement("button");
+  button.type = "button";
+  return configureCopyControl(button, title, markdownProvider);
+}
+
+function configureCopyControl(button, title, markdownProvider) {
+  button.classList.add("icon-button");
+  button.title = title;
+  button.setAttribute("aria-label", title);
+  renderCopyControl(button, "idle");
+  button.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(await markdownProvider());
+      showCopyFeedback(button, "success", 1000);
+    } catch {
+      showCopyFeedback(button, "failure", 2000);
+    }
+  });
   return button;
 }
 
-function restoreCopyButton(button) {
+function showCopyFeedback(button, state, duration) {
+  const previousTimer = copyFeedbackTimers.get(button);
+  if (previousTimer) window.clearTimeout(previousTimer);
+  renderCopyControl(button, state);
+  copyFeedbackTimers.set(button, window.setTimeout(() => {
+    renderCopyControl(button, "idle");
+    copyFeedbackTimers.delete(button);
+  }, duration));
+}
+
+function renderCopyControl(button, state) {
   button.replaceChildren();
+  if (state !== "idle") {
+    const feedback = document.createElement("span");
+    feedback.className = `copy-feedback copy-${state}`;
+    feedback.textContent = state === "success" ? "✓" : "✖";
+    feedback.setAttribute("aria-hidden", "true");
+    button.append(feedback);
+    return;
+  }
   const symbol = document.createElement("span");
   symbol.className = "copy-symbol";
   symbol.setAttribute("aria-hidden", "true");
   button.append(symbol);
-  button.title = "Copy message Markdown";
 }
 
 function textButton(label, handler) {

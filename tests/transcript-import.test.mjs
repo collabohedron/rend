@@ -137,7 +137,7 @@ test("an exact ordered prefix extends the transcript and preserves existing edit
     { sourceMessageId: "m3", included: true, note: null },
     { sourceMessageId: "m4", included: true, note: null },
   ]);
-  assert.match(toMarkdown(project), /## USER\n\nNew question[\s\S]*## ASSISTANT\n\nNew answer/);
+  assert.match(toMarkdown(project), /### USER\n\nNew question[\s\S]*### ASSISTANT\n\nNew answer/);
 
   const reopened = projectFromContainer(containerComponents(project), deps);
   assert.equal(toMarkdown(reopened), toMarkdown(project));

@@ -1,19 +1,21 @@
 # Rend
 
-**A ChatGPT conversation renderer**
+**A ChatGPT conversation workspace**
 
-*Read long ChatGPT conversations like documents again.*
+*Read long ChatGPT conversations like documents again, then bring what matters into a new one.*
 
 
 ## Why Rend?
 
 ChatGPT conversations become increasingly difficult to work with as they grow.
 
-Searching, reviewing earlier decisions, copying large sections, or producing a clean transcript can become cumbersome in the standard interface.
+Long discussions are excellent for exploration, but poor for review. Finding earlier decisions, restructuring the conversation, removing dead ends, or producing a clean record all become increasingly difficult.
 
-Rend imports a public ChatGPT Share page and renders the entire conversation as a continuous document.
+Rend imports a public ChatGPT Share page and presents it as a continuous document, alongside a non-destructive editorial workspace for organizing, annotating, and curating the transcript.  This makes it practical to distill and restore context, so we can start a new conversation from the ashes  of the original.
 
 Once imported, Rend creates an editable local project. You can search it with normal browser tools, annotate the transcript, save your work as a local project file to open and continue editing later, export your curated transcript (with annotations) as a final Markdown file, or print it directly.
+
+Rend provides editorial tools, not editorial decisions.
 
 
 
@@ -26,10 +28,11 @@ Once imported, Rend creates an editable local project. You can search it with no
 - Include or omit individual messages from exported output
 - Add section markers to structure the transcript
 - Include or omit marked sections with a single click
-- Switch contextually between the full transcript and a section Outline View
-- Add editorial notes for later review
+- Switch between transcript and section-level curation with Outline View
+- Evaluate sections using message counts, word counts, timing, and Notes
+- Add editorial notes to capture follow-up work and decisions
 - Edit the document header independently from the imported conversation title
-- Copy individual messages as Markdown
+- Copy messages, sections, or the complete curated document as Markdown
 - Print curated transcripts, or export them as Markdown
 
 ## Requirements
@@ -68,16 +71,21 @@ After importing a conversation you can:
 - Review the transcript as one continuous document.
 - Include or omit individual messages or whole sections from either adjacent anchor.
 - Add section markers to structure the transcript.
-- Use an anchor's outline icon—or the document header's icon when no anchors remain—to review every section without message bodies.
+- Use **Switch Views** or `\` to switch between detailed message editing and rapid section-level curation.
+- In Transcript View, use `Shift+Up` / `Shift+Down` for adjacent messages and `Ctrl+Up` / `Ctrl+Down` for adjacent sections.
 - Add editorial notes for later review.
-- Copy individual messages as Markdown.
+- Copy individual messages, individual outline sections, or the complete curated document as Markdown.
 - Save the editable workspace with **Save Project** or **Save Project As...**.
 - Save the curated transcript with **Save Markdown As...**.
 - Print only the selected content with **Print Selected**.
 
 The large document header is editable independently from the imported conversation title and supplies export filenames. The document header, section markers, and notes are editorial annotations stored separately from the immutable imported transcript. Section markers automatically appear in output whenever the section they introduce contains included content. Markers that do not introduce a section always appear.
 
-New imports receive an ordinary trailing marker named `End of Document: <timestamp>`. When a later Share import strictly extends the existing transcript, Rend preserves the prior marker before the appended messages and creates a new trailing marker. Outline View is a screen-only navigation and curation presentation; **Print Selected** always prints the curated full transcript.
+New imports receive an ordinary trailing marker named `End of Document: <timestamp>`. When a later Share import strictly extends the existing transcript, Rend preserves the prior marker before the appended messages and creates a new trailing marker. 
+
+Outline View is a screen-only curation view for working with entire sections at once. It displays section boundaries together with message counts, role word counts, timing information, and Notes, allowing sections to be evaluated and curated without displaying every message. These analytics are recalculated from the current document whenever the outline is shown and are never saved in the project. Omitted sections remain dimmed, but continue to display the same analytics and Notes so those can be evaluated and restored later. Non-empty Notes can be viewed directly in Outline View and used to return to their source messages.
+
+**Print Selected** always prints the curated full transcript.
 
 ## Rend projects and output
 

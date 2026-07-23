@@ -111,7 +111,7 @@ export function toggleCurrentZone(project, sectionId) {
   return toggleMessageZone(project, currentZoneState(project, sectionId));
 }
 
-export function outlineSections(project) {
+export function documentSections(project) {
   const sections = [{ openerKind: "header", openerId: "document-header", title: deriveProjectDisplayTitle(project), messageBindingIds: [] }];
   for (const node of project.editorial.nodes) {
     if (node.kind === "section") {
@@ -130,8 +130,53 @@ export function outlineSections(project) {
   });
 }
 
+export function outlineSections(project) {
+  return documentSections(project).map((section) => ({
+    ...section,
+    analytics: sectionAnalytics(project, section.messageBindingIds),
+  }));
+}
+
+export function countMarkdownWords(markdown) {
+  return String(markdown).match(/[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*/gu)?.length ?? 0;
+}
+
+export function outlineTimestampParts(analytics, options = {}) {
+  if (analytics.usableTimestampCount === 0) return null;
+  const start = localTimestampParts(analytics.startTimestamp, options);
+  if (analytics.messageCount === 1 || analytics.usableTimestampCount === 1 || analytics.startTimestamp === analytics.endTimestamp) {
+    return { range: start.full, duration: null };
+  }
+  const end = localTimestampParts(analytics.endTimestamp, options);
+  let range;
+  if (start.dateKey !== end.dateKey) {
+    range = `${start.full} – ${end.full}`;
+  } else if (start.dayPeriod === end.dayPeriod) {
+    range = `${start.date}, ${start.clock} – ${end.clock} ${end.dayPeriod}`;
+  } else {
+    range = `${start.date}, ${start.clock} ${start.dayPeriod} – ${end.clock} ${end.dayPeriod}`;
+  }
+  return {
+    range,
+    duration: formatElapsedDuration(Math.abs(analytics.endTimestamp - analytics.startTimestamp)),
+  };
+}
+
+export function formatElapsedDuration(milliseconds) {
+  if (milliseconds < 60000) return "<1m";
+  const totalMinutes = Math.floor(milliseconds / 60000);
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+  return [
+    days ? `${days}d` : "",
+    hours ? `${hours}h` : "",
+    minutes ? `${minutes}m` : "",
+  ].filter(Boolean).join(" ");
+}
+
 export function toggleOutlineSection(project, openerId) {
-  const section = outlineSections(project).find((item) => item.openerId === openerId);
+  const section = documentSections(project).find((item) => item.openerId === openerId);
   if (!section) throw new Error(`Unknown outline section: ${openerId}`);
   return toggleMessageZone(project, {
     state: section.available ? section.state : "unavailable",
@@ -164,7 +209,7 @@ export function curatedStream(project, { includeOmitted = false } = {}) {
     if (node.kind === "section") {
       const output = anchorOutputState(project, node.id);
       if (includeOmitted || output.included) stream.push({
-        kind: "section", section: node, included: output.included, anchorKind: output.kind,
+        kind: "section", section: node, included: output.included,
       });
       continue;
     }
@@ -214,16 +259,17 @@ export function copyMarkdown(message) {
   return message.markdown;
 }
 
-export function toMarkdown(project) {
-  const sections = [`# ${singleLine(deriveProjectDisplayTitle(project))}`];
-  for (const node of curatedStream(project)) {
+export function toMarkdown(project, { sectionId = null } = {}) {
+  const scope = markdownScope(project, sectionId);
+  const sections = scope.documentHeader ? [`# ${singleLine(deriveProjectDisplayTitle(project))}`] : [];
+  for (const node of scope.nodes) {
     if (node.kind === "section") {
       const text = node.section.text.trim();
       if (text) sections.push(`## ${singleLine(text)}`);
       continue;
     }
     const role = node.message.author === "user" ? "USER" : "ASSISTANT";
-    const body = [`## ${role}`, messageMarkdown(node.message)];
+    const body = [`### ${role}`, messageMarkdown(node.message)];
     if (node.note?.text.trim()) body.push(formatNote(node.note.text));
     sections.push(body.filter((part) => part !== "").join("\n\n"));
   }
@@ -263,6 +309,87 @@ function toggleMessageZone(project, zone) {
   const included = zone.state === "omitted";
   for (const bindingId of zone.messageBindingIds) setMessageIncluded(project, bindingId, included);
   return true;
+}
+
+function markdownScope(project, sectionId) {
+  if (sectionId === null) {
+    return { documentHeader: true, nodes: curatedStream(project) };
+  }
+  const section = documentSections(project).find((item) => item.openerId === sectionId);
+  if (!section) throw new Error(`Unknown Markdown section: ${sectionId}`);
+  const nodes = [];
+  if (section.openerKind === "anchor") {
+    nodes.push({ kind: "section", section: findSection(project, sectionId) });
+  }
+  for (const bindingId of section.messageBindingIds) {
+    const binding = bindingById(project, bindingId);
+    if (!binding.included) continue;
+    nodes.push({
+      kind: "message",
+      message: messageForBinding(project, binding),
+      binding,
+      included: true,
+      note: binding.note,
+    });
+  }
+  return { documentHeader: section.openerKind === "header", nodes };
+}
+
+function sectionAnalytics(project, messageBindingIds) {
+  const analytics = {
+    messageCount: 0,
+    userWordCount: 0,
+    assistantWordCount: 0,
+    startTimestamp: null,
+    endTimestamp: null,
+    usableTimestampCount: 0,
+    annotationCount: 0,
+    annotations: [],
+  };
+  for (const bindingId of messageBindingIds) {
+    const binding = bindingById(project, bindingId);
+    const message = messageForBinding(project, binding);
+    const wordCount = countMarkdownWords(message.markdown);
+    analytics.messageCount += 1;
+    if (message.author === "user") analytics.userWordCount += wordCount;
+    if (message.author === "assistant") analytics.assistantWordCount += wordCount;
+    const timestamp = usableMessageTimestamp(message.created_at);
+    if (timestamp !== null) {
+      if (analytics.startTimestamp === null) analytics.startTimestamp = timestamp;
+      analytics.endTimestamp = timestamp;
+      analytics.usableTimestampCount += 1;
+    }
+    if (binding.note?.text.trim()) {
+      analytics.annotations.push({ bindingId, note: binding.note });
+    }
+  }
+  analytics.annotationCount = analytics.annotations.length;
+  return analytics;
+}
+
+function usableMessageTimestamp(value) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  const timestamp = value * 1000;
+  return Number.isNaN(new Date(timestamp).getTime()) ? null : timestamp;
+}
+
+function localTimestampParts(timestamp, { timeZone } = {}) {
+  const options = timeZone ? { timeZone } : {};
+  const dateParts = new Intl.DateTimeFormat("en-US", {
+    ...options, year: "numeric", month: "short", day: "numeric",
+  }).formatToParts(new Date(timestamp));
+  const timeParts = new Intl.DateTimeFormat("en-US", {
+    ...options, hour: "numeric", minute: "2-digit", hour12: true,
+  }).formatToParts(new Date(timestamp));
+  const date = Object.fromEntries(dateParts.map((part) => [part.type, part.value]));
+  const time = Object.fromEntries(timeParts.map((part) => [part.type, part.value]));
+  return {
+    date: `${date.month} ${date.day}`,
+    dateKey: `${date.year}-${date.month}-${date.day}`,
+    clock: `${time.hour}:${time.minute}`,
+    dayPeriod: time.dayPeriod,
+    full: `${date.month} ${date.day}, ${time.hour}:${time.minute} ${time.dayPeriod}`,
+  };
 }
 
 function formatNote(text) {

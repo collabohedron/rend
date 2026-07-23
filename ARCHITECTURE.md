@@ -133,6 +133,12 @@ The inclusion state of each section marker is not stored directly, but is derive
 
 Section projection begins with the implicit document-header boundary and creates another section at every explicit marker. The implicit boundary is never serialized. New imported projects do serialize one ordinary trailing end-of-document marker; strict prefix refreshes append messages after the prior boundary and add a new trailing marker. Outline View and the transcript consume the same derived section projection, so their tri-state controls cannot diverge.
 
+Outline analytics are ephemeral projections over every message in a section, independent of export inclusion. Message counts, role word counts, usable timestamp ranges, elapsed duration, and non-empty message Notes are recalculated from the runtime transcript/editorial state rather than cached or persisted. Omission is represented visually in Outline View but filters only export and print projections. Annotation disclosure stores only expanded section IDs for the active workspace.
+
+Markdown serialization uses shared formatting and clipboard infrastructure across message, section, and document scopes. Save Markdown and Copy Document use the complete curated projection, while Copy Section supplies one section and its currently included messages. Clipboard controls share one icon and transient feedback implementation; clipboard state is never persisted.
+
+Transcript and Outline navigation share one ephemeral current-section identifier. In Transcript View it is continuously derived from the last document header or explicit anchor at or above the sticky-header-adjusted viewport boundary; explicit outline selection and programmatic navigation update the same value. View switching, message navigation, section navigation, and scroll tracking therefore cannot create competing selection states.
+
 Renderers, exporters, printers, and future navigation tools should depend only on this model.
 
 ---
@@ -151,7 +157,7 @@ Its responsibilities include:
 - Markdown export
 - printing
 
-The transcript and outline are alternate screen presentations kept in the DOM together. Print-specific CSS always suppresses the outline and prints the curated transcript, regardless of the active screen view.
+The transcript and outline are alternate screen presentations derived from the same section structure. Only the active view is rendered.  Print-specific CSS always suppresses the outline and prints the curated transcript, regardless of the active screen view.
 
 Project persistence is divided between browser-side project/session modules and the local Python container boundary. 
 

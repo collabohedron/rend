@@ -16,7 +16,7 @@ button { padding: .45rem .7rem; }
 .review-controls { display: flex; justify-content: space-between; align-items: center; gap: .75rem; }
 .action-buttons, .editing-controls { display: flex; flex-wrap: wrap; gap: .4rem; }
 .action-buttons { margin-left: auto; }
-.project-state { align-self: center; color: #666; font-size: .85rem; }
+.project-state { display: block; margin-top: .2rem; color: #666; font-size: .85rem; text-align: right; }
 .project-state.dirty { color: #a55b00; }
 .include-all-control { white-space: nowrap; }
 .transient-status { margin: .7rem 0; color: #666; }

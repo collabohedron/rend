@@ -650,6 +650,8 @@ test("pre-import chrome is hidden and review controls become sticky after import
   assert.doesNotMatch(app, /form\.hidden = false/);
   assert.match(css, /\[hidden\] \{ display: none !important; \}/);
   assert.match(css, /\.sticky-review \{ position: sticky; top: 0/);
+  assert.match(html, /class="action-buttons"[\s\S]*<\/div>\s*<\/div>\s*<span id="project-state"/);
+  assert.match(css, /\.project-state \{ display: block;[\s\S]*text-align: right; \}/);
 });
 
 test("save and print reveal the persistent Share-link reminder", async () => {
